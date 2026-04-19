@@ -1,0 +1,13 @@
+{
+  "name": "coderXcode-mcp-forge",
+  "owner": {
+    "name": "coderXcode"
+  },
+  "plugins": [
+    {
+      "name": "mcp-forge",
+      "source": "./plugins/mcp-forge",
+      "description": "Convert any API, GitHub repo, or OpenAPI spec into a production-ready MCP server using AI — analyze, generate, test, and rollback from Claude Code"
+    }
+  ]
+}

@@ -218,27 +218,34 @@ The model (~8 GB) downloads from HuggingFace on first use and is cached for subs
 
 Connect MCP Forge to Claude Desktop so Claude can drive the entire workflow.
 
-### Step 1 — Get your auth token
+### One-command install
 
+**Windows (PowerShell):**
 ```powershell
-# PowerShell (Windows)
-docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
+.\scripts\install_claude_plugin.ps1
 ```
 
-> To change the token: edit `MCP_AUTH_TOKEN=` in `.env`, then `docker compose restart`.
+**macOS / Linux:**
+```bash
+bash scripts/install_claude_plugin.sh
+```
 
-### Step 2 — Write the config file
+The script checks Docker is running, pulls the token automatically, and writes the config file in the right place. Then **fully quit and reopen Claude Desktop** (system tray → Quit).
 
-**Config file location:**
+### Verify
+
+Open Claude Desktop → **Settings → Developer** → you should see **mcp-forge** with a 🟢 green dot.
+
+> To change the token: edit `MCP_AUTH_TOKEN=` in `.env`, run `docker compose restart`, then re-run the script.
+
+### Manual config (SSE mode)
+
+If you prefer to write the file yourself — config location:
 
 | OS | Path |
 |---|---|
 | Windows | `C:\Users\<YourName>\AppData\Roaming\Claude\claude_desktop_config.json` |
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-
-> Create the `Claude` folder if it doesn't exist.
-
-**Paste this** (replace `YOUR_TOKEN_HERE`):
 
 ```json
 {
@@ -252,63 +259,6 @@ docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
   }
 }
 ```
-
-**Windows PowerShell one-liner** (auto-pulls token from Docker):
-
-```powershell
-$dir = "$env:APPDATA\Claude"
-New-Item -ItemType Directory -Force -Path $dir | Out-Null
-$token = docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
-@"
-{
-  "mcpServers": {
-    "mcp-forge": {
-      "url": "http://localhost:8001/sse",
-      "headers": { "X-MCP-Token": "$token" }
-    }
-  }
-}
-"@ | Set-Content "$dir\claude_desktop_config.json" -Encoding UTF8
-Write-Host "Done: $dir\claude_desktop_config.json"
-```
-
-**Fully quit and reopen Claude Desktop** (system tray → Quit, not just close the window).
-
-### Step 3 — Verify
-
-Open Claude Desktop → **Settings → Developer** → you should see **mcp-forge** with a 🟢 green dot.
-
-### Alternative — Via Claude Desktop UI (Connectors)
-
-On newer versions with the **Customize** screen:
-
-1. Click **Customize** → **Connectors** → **`+`**
-2. Fill in: Name = `mcp-forge`, URL = `http://localhost:8001/sse`, Header = `X-MCP-Token` / *(your token)*
-3. Save, then fully restart Claude Desktop
-
-> ⚠️ If there is no URL field (only OAuth), use the JSON file method above instead.
-
-### Alternative — Stdio mode (no Docker port needed)
-
-```json
-{
-  "mcpServers": {
-    "mcp-forge": {
-      "command": "python",
-      "args": ["mcp_server/server.py"],
-      "cwd": "C:/path/to/YOUR_REPO",
-      "env": {
-        "PYTHONPATH": "C:/path/to/YOUR_REPO",
-        "APP_URL": "http://localhost:8000",
-        "MCP_AUTH_TOKEN": "YOUR_TOKEN_HERE",
-        "MCP_TRANSPORT": "stdio"
-      }
-    }
-  }
-}
-```
-
-> Requires Python 3.12+ and `pip install fastmcp httpx sqlmodel pydantic-settings`.
 
 ### Example prompts for Claude
 
@@ -337,7 +287,17 @@ Chat with the forge agent for project 1:
 
 ## 🧩 Claude Code Plugin
 
-The repo includes a `.mcp.json` at the root — Claude Code picks it up automatically.
+Two ways to install — pick one:
+
+**Option A — Marketplace install (recommended, one-time):**
+```
+/plugin marketplace add coderXcode/mcp-forge
+/plugin install mcp-forge@coderXcode-mcp-forge
+```
+Reload Claude Code. Skills become available immediately.
+
+**Option B — Auto-detected from repo root:**
+Clone the repo and open it in Claude Code — `.mcp.json` at the root is picked up automatically.
 
 Set your token:
 
@@ -372,10 +332,10 @@ A `forge` command-line tool is included for terminal-based workflows.
 # From this repo (works immediately)
 pip install -e .
 
-# From GitHub (once the repo is public)
-pip install git+https://github.com/YOUR_USERNAME/YOUR_REPO.git
+# From GitHub 
+pip install git+https://github.com/coderXcode/mcp-forge.git
 
-# From PyPI (once published)
+# From PyPI (in progress)
 pip install mcp-forge
 pipx install mcp-forge
 ```

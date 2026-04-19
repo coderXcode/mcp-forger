@@ -1,0 +1,58 @@
+name: mcp-forge
+description: Convert any API, GitHub repo, or OpenAPI spec into a production-ready MCP server using AI
+version: "1.0.0"
+author: coderXcode
+
+skills:
+  - name: status
+    description: List all MCP Forge projects with their current status
+    prompt: |
+      Use the MCP Forge API to list all projects.
+      Call: GET http://localhost:8000/api/projects/
+      Show the results as a table with columns: ID, Name, Status, Source Type, Target Language, Created.
+
+  - name: analyze
+    description: Analyze a project's source to discover API endpoints and structure
+    prompt: |
+      Trigger analysis for the given project.
+      Call: POST http://localhost:8000/api/projects/{project_id}/analyze
+      Add header: X-MCP-Token from environment variable FORGE_TOKEN or MCP_AUTH_TOKEN.
+      Then poll GET http://localhost:8000/api/projects/{project_id} until status is not "analyzing".
+      Report what endpoints were discovered.
+
+  - name: generate
+    description: Generate an MCP server from an analyzed project
+    prompt: |
+      Generate an MCP server for the given project.
+      Call: POST http://localhost:8000/api/projects/{project_id}/generate
+      Body: { "target_language": "{lang|python_fastmcp}", "label": "v{version|1}" }
+      Add header: X-MCP-Token from environment variable FORGE_TOKEN or MCP_AUTH_TOKEN.
+      Poll until status is "ready", then show a summary of the generated files.
+
+  - name: chat
+    description: Chat with the MCP Forge AI agent for a project
+    prompt: |
+      Send a message to the forge agent for the given project.
+      Call: POST http://localhost:8000/api/projects/{project_id}/chat/send
+      Body: { "message": "{message}" }
+      Add header: X-MCP-Token from environment variable FORGE_TOKEN or MCP_AUTH_TOKEN.
+      Display the agent's response. If the response contains [CLARIFICATION]...[/CLARIFICATION],
+      highlight the question and ask the user to answer it inline.
+
+  - name: test
+    description: Run AI-generated tests for a project
+    prompt: |
+      Run tests for the given project.
+      Call: POST http://localhost:8000/api/projects/{project_id}/tests/run
+      Add header: X-MCP-Token from environment variable FORGE_TOKEN or MCP_AUTH_TOKEN.
+      Poll GET http://localhost:8000/api/projects/{project_id}/tests/results until complete.
+      Report pass/fail/skip counts and any failures.
+
+  - name: rollback
+    description: Rollback a project to a previous snapshot version
+    prompt: |
+      Roll back the given project to the specified snapshot version.
+      First list snapshots: GET http://localhost:8000/api/projects/{project_id}/snapshots
+      Then restore: POST http://localhost:8000/api/projects/{project_id}/snapshots/{version}/restore
+      Add header: X-MCP-Token from environment variable FORGE_TOKEN or MCP_AUTH_TOKEN.
+      Confirm the rollback was successful and show the restored version details.

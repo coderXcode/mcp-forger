@@ -68,21 +68,58 @@ curl http://localhost:8001/sse
 
 ## Part 2 — Connect to Claude Desktop
 
-### Get your auth token
-
-```powershell
-# PowerShell (Windows)
-docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
-
-# Terminal (macOS / Linux)
-docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
-```
-
-> To change the token: edit `MCP_AUTH_TOKEN=` in your `.env` file, then run `docker compose restart`.
+> **One-command install** — the scripts below auto-detect your token from Docker and write the config file in the right place. No manual editing required.
 
 ---
 
-### Option A — Edit the config file (always works)
+### 🪟 Windows — run the installer script
+
+Open **PowerShell** in the project folder and run:
+
+```powershell
+.\scripts\install_claude_plugin.ps1
+```
+
+That's it. The script will:
+1. ✅ Check Docker + `mcp_forge_app` is running
+2. ✅ Pull `MCP_AUTH_TOKEN` directly from the container
+3. ✅ Create `%APPDATA%\Claude\` if it doesn't exist
+4. ✅ Write `claude_desktop_config.json` with the correct token
+5. ✅ Print exactly what to do next
+
+---
+
+### 🍎 macOS / Linux — run the installer script
+
+Open **Terminal** in the project folder and run:
+
+```bash
+bash scripts/install_claude_plugin.sh
+```
+
+Same steps — checks Docker, pulls token, writes config to `~/Library/Application Support/Claude/claude_desktop_config.json`.
+
+---
+
+### After running the script
+
+1. **Fully QUIT Claude Desktop** — right-click the icon in the system tray / menu bar → **Quit** (just closing the window is not enough)
+2. **Reopen Claude Desktop**
+3. Go to **Settings** (gear icon) → **Developer**
+4. You should see **mcp-forge** listed with a 🟢 **green dot**
+5. Test it — ask Claude: *"List all my MCP Forge projects"*
+
+---
+
+### Manual install (if you prefer not to use the script)
+
+<details>
+<summary>Click to expand manual steps</summary>
+
+**Get your token:**
+```powershell
+docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
+```
 
 **Config file location:**
 
@@ -90,8 +127,6 @@ docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
 |---|---|
 | Windows | `C:\Users\<YourName>\AppData\Roaming\Claude\claude_desktop_config.json` |
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-
-> Create the `Claude` folder if it doesn't exist.
 
 **Paste this into the file** (replace `YOUR_TOKEN_HERE`):
 
@@ -108,59 +143,46 @@ docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
 }
 ```
 
-**Windows PowerShell one-liner** — auto-pulls the token from Docker and writes the file:
+Fully quit and reopen Claude Desktop.
 
-```powershell
-$dir = "$env:APPDATA\Claude"
-New-Item -ItemType Directory -Force -Path $dir | Out-Null
-$token = docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
-@"
-{
-  "mcpServers": {
-    "mcp-forge": {
-      "url": "http://localhost:8001/sse",
-      "headers": { "X-MCP-Token": "$token" }
-    }
-  }
-}
-"@ | Set-Content "$dir\claude_desktop_config.json" -Encoding UTF8
-Write-Host "Done: $dir\claude_desktop_config.json"
-```
-
-**Fully quit and reopen Claude Desktop** (system tray → Quit, not just close the window).
+</details>
 
 ---
 
-### Option B — Via Claude Desktop UI (Connectors)
+### Via Claude Desktop UI (Connectors) — newer versions only
 
-Works on newer Claude Desktop versions with the **Customize** screen:
+On newer Claude Desktop versions with a **Customize** screen:
 
-1. Open Claude Desktop → click **Customize** in the left sidebar
-2. Click **Connectors** → **`+`** next to "Personal plugins"
-3. Fill in:
-   - **Name:** `mcp-forge`
-   - **URL:** `http://localhost:8001/sse`
-   - **Header name:** `X-MCP-Token`
-   - **Header value:** *(your token)*
-4. Save, then fully restart Claude Desktop
+1. Click **Customize** in the left sidebar → **Connectors** → **`+`**
+2. Fill in: **Name** = `mcp-forge`, **URL** = `http://localhost:8001/sse`, **Header** = `X-MCP-Token` / *(your token)*
+3. Save → fully restart Claude Desktop
 
-> ⚠️ If there is no URL field (only OAuth connectors), use **Option A** instead.
+> ⚠️ If there is no URL field (only OAuth), use the script method above instead.
 
 ---
 
-### Verify the connection
-
-1. Open Claude Desktop → **Settings** (gear) → **Developer**
-2. You should see **mcp-forge** with a 🟢 green dot
-3. Test it — ask Claude: *"List all my MCP Forge projects"*
+> To change the token later: edit `MCP_AUTH_TOKEN=` in `.env`, run `docker compose restart`, then re-run the install script.
 
 ---
 
 ## Part 3 — Connect to Claude Code (VS Code)
 
-The repo already contains a `.mcp.json` at the root — Claude Code picks it up automatically.
+Two ways to install — pick one:
 
-Set your token as an environment variable in your shell:
+**Option A — Marketplace install (recommended):**
+
+In Claude Code, run these two commands:
+```
+/plugin marketplace add coderXcode/mcp-forge
+/plugin install mcp-forge@coderXcode-mcp-forge
+```
+Reload Claude Code. Skills are available immediately — no cloning or env vars needed.
+
+**Option B — Auto-detected from repo root:**
+
+If you have the repo cloned and open in Claude Code, `.mcp.json` at the root is picked up automatically.
+
+Set your token as an environment variable:
 
 ```powershell
 # Windows PowerShell
@@ -189,7 +211,7 @@ Then use skills directly in Claude Code:
 # Install the forge CLI
 pip install mcp-forge
 # or: pipx install mcp-forge
-# or: pip install git+https://github.com/YOUR_USERNAME/YOUR_REPO.git
+# or: pip install git+https://github.com/coderXcode/mcp-forge.git
 
 # Add the plugin
 codex marketplace add mcp-forge/mcp-forge
