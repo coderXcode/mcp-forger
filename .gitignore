@@ -1,0 +1,70 @@
+# Environment
+.env
+*.env.local
+
+# Author-only docs — not for public distribution
+author_manual.md
+TESTING.md
+INSTALLATION.md
+
+# User project folders dropped into mnt/ — ignore contents, keep folder
+mnt/*
+!mnt/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Logs
+logs/
+*.log
+
+# Generated MCP output files
+generated/
+
+# Node modules (for generated Node.js MCPs)
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Secrets
+*.pem
+*.key
+*.cert
+
+cache/

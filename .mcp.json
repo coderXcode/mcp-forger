@@ -1,0 +1,58 @@
+{
+  "name": "mcp-forge",
+  "version": "1.0.0",
+  "description": "Convert any application into an MCP server using AI — analyze, generate, test, rollback, and chat with the forge agent from inside Claude Code.",
+  "author": "MCP Forge",
+  "homepage": "https://github.com/your-org/mcp-forge",
+  "type": "mcp",
+  "transport": "sse",
+  "server": {
+    "url": "http://localhost:8001/sse",
+    "headers": {
+      "X-MCP-Token": "${FORGE_TOKEN}"
+    }
+  },
+  "env": {
+    "FORGE_TOKEN": {
+      "description": "MCP Forge auth token — run: docker exec mcp_forge_app printenv MCP_AUTH_TOKEN",
+      "required": true
+    }
+  },
+  "skills": [
+    {
+      "name": "forge:analyze",
+      "description": "Analyze a project's source code or OpenAPI spec and detect endpoints, schemas, auth",
+      "usage": "/forge:analyze <project_id>"
+    },
+    {
+      "name": "forge:generate",
+      "description": "Generate a Python FastMCP / Node.js / Go MCP server from analyzed endpoints",
+      "usage": "/forge:generate <project_id> [--lang python_fastmcp|nodejs|go]"
+    },
+    {
+      "name": "forge:chat",
+      "description": "Chat with the AI forge agent for a project — ask it to refactor, clarify, or explain decisions",
+      "usage": "/forge:chat <project_id> <message>"
+    },
+    {
+      "name": "forge:status",
+      "description": "List all projects and their current status",
+      "usage": "/forge:status"
+    },
+    {
+      "name": "forge:test",
+      "description": "Run AI-generated tests against the generated MCP server",
+      "usage": "/forge:test <project_id>"
+    },
+    {
+      "name": "forge:rollback",
+      "description": "Roll back a project to a previous snapshot version",
+      "usage": "/forge:rollback <project_id> <version>"
+    }
+  ],
+  "install": {
+    "claude_code": "/plugin marketplace add mcp-forge/mcp-forge",
+    "codex": "codex marketplace add mcp-forge/mcp-forge",
+    "manual": "See CLAUDE_DESKTOP_PLUGIN.md"
+  }
+}

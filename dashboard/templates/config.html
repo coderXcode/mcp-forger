@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+{% block title %}Config / .env — MCP Forge{% endblock %}
+{% block page_title %}Configuration{% endblock %}
+
+{% block content %}
+<div x-data="configPage()" x-init="init()" class="max-w-4xl mx-auto">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <p class="text-sm text-gray-400">Edit your <code class="text-forge-400 bg-gray-800 px-1.5 py-0.5 rounded">.env</code> file directly from the dashboard. Changes take effect immediately.</p>
+    </div>
+    <div class="flex gap-2">
+      <button @click="resetFromExample()"
+              class="flex items-center gap-2 text-sm bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors">
+        <i class="fa-solid fa-rotate-left"></i> Reset from template
+      </button>
+      <button @click="saveAll()"
+              :disabled="saving"
+              class="flex items-center gap-2 text-sm bg-forge-600 hover:bg-forge-500 text-white font-medium px-4 py-2 rounded-lg transition-colors">
+        <i class="fa-solid" :class="saving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"></i>
+        <span x-text="saving ? 'Saving...' : 'Save Changes'"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Sections -->
+  <div class="space-y-6">
+
+    <!-- LLM Providers -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-700 bg-gray-850">
+        <div class="w-8 h-8 rounded-lg bg-purple-900/60 flex items-center justify-center">
+          <i class="fa-solid fa-robot text-purple-400 text-sm"></i>
+        </div>
+        <div>
+          <h3 class="font-semibold text-white">LLM Providers</h3>
+          <p class="text-xs text-gray-500">API keys for the chat agent</p>
+        </div>
+      </div>
+      <div class="p-5 space-y-4">
+        <div class="grid grid-cols-4 gap-3">
+          <template x-for="opt in ['gemini', 'anthropic', 'openai', 'local']" :key="opt">
+            <button @click="setVar('LLM_PROVIDER', opt)"
+                    :class="getVar('LLM_PROVIDER') === opt ? 'border-forge-500 bg-forge-900/40 text-forge-300' : 'border-gray-600 text-gray-400 hover:border-gray-500'"
+                    class="py-2 rounded-lg border text-sm font-medium transition-colors capitalize" x-text="opt">
+            </button>
+          </template>
+        </div>
+        <input-row key="GEMINI_API_KEY" label="Gemini API Key" type="password" :vars="vars" @change="onInput"></input-row>
+        <div class="grid grid-cols-2 gap-4">
+          <config-field label="Gemini API Key" key="GEMINI_API_KEY" :vars="vars" @update="setVar"></config-field>
+          <config-field label="Gemini Model" key="GEMINI_MODEL" :vars="vars" @update="setVar"></config-field>
+          <config-field label="Anthropic API Key" key="ANTHROPIC_API_KEY" secret :vars="vars" @update="setVar"></config-field>
+          <config-field label="Anthropic Model" key="ANTHROPIC_MODEL" :vars="vars" @update="setVar"></config-field>
+          <config-field label="OpenAI API Key" key="OPENAI_API_KEY" secret :vars="vars" @update="setVar"></config-field>
+          <config-field label="OpenAI Model" key="OPENAI_MODEL" :vars="vars" @update="setVar"></config-field>
+        </div>
+        <!-- Local model settings — shown only when local is selected -->
+        <div x-show="getVar('LLM_PROVIDER') === 'local'" class="border border-yellow-700/50 bg-yellow-900/10 rounded-lg p-4 space-y-4">
+          <div class="flex items-center gap-2 text-yellow-400 text-xs font-medium">
+            <i class="fa-solid fa-microchip"></i>
+            Local HuggingFace Model — requires NVIDIA GPU + Docker GPU passthrough
+          </div>
+
+          <!-- Model fields -->
+          <div class="grid grid-cols-2 gap-4">
+            <config-field label="HuggingFace Model ID" key="LOCAL_MODEL" :vars="vars" @update="setVar" class="col-span-2"
+              placeholder="Qwen/Qwen2.5-Coder-14B-Instruct"></config-field>
+            <config-field label="Device" key="LOCAL_MODEL_DEVICE" :vars="vars" @update="setVar"
+              placeholder="auto"></config-field>
+            <config-field label="Load in 4-bit (saves VRAM)" key="LOCAL_MODEL_LOAD_IN_4BIT" :vars="vars" @update="setVar"
+              placeholder="true"></config-field>
+          </div>
+
+          <!-- Status bar -->
+          <div x-data="localModelStatus()" x-init="init()" class="rounded-lg border border-gray-700 bg-gray-900/60 px-4 py-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <!-- state icon -->
+              <template x-if="status === 'loaded'">
+                <span class="w-2.5 h-2.5 rounded-full bg-green-400 shrink-0"></span>
+              </template>
+              <template x-if="status === 'loading'">
+                <i class="fa-solid fa-spinner fa-spin text-yellow-400 text-sm shrink-0"></i>
+              </template>
+              <template x-if="status === 'not_loaded' || status === 'error'">
+                <span class="w-2.5 h-2.5 rounded-full bg-gray-500 shrink-0"></span>
+              </template>
+              <!-- label -->
+              <div>
+                <p class="text-xs text-white font-medium" x-text="statusLabel"></p>
+                <p x-show="vram" class="text-xs text-gray-400 font-mono" x-text="vram"></p>
+              </div>
+            </div>
+            <button @click="loadModel()"
+                    :disabled="loading || status === 'loaded'"
+                    :class="status === 'loaded' ? 'bg-green-900 text-green-400 cursor-default' : 'bg-yellow-700 hover:bg-yellow-600 text-white'"
+                    class="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60">
+              <i class="fa-solid mr-1" :class="loading ? 'fa-spinner fa-spin' : status === 'loaded' ? 'fa-check' : 'fa-bolt'"></i>
+              <span x-text="status === 'loaded' ? 'Model Ready' : loading ? 'Loading…' : 'Load Model Now'"></span>
+            </button>
+          </div>
+
+          <p class="text-xs text-gray-500">
+            <i class="fa-solid fa-circle-info mr-1 text-yellow-600"></i>
+            <strong class="text-gray-300">When does the model run?</strong>
+            The model loads <em>lazily</em> on the first analysis/generation request, or immediately when you click <strong>Load Model Now</strong> above.
+            First run downloads the model from HuggingFace (~8 GB for 14B 4-bit). Subsequent starts reuse the cache.
+            Recommended for 15 GB VRAM: <code class="text-yellow-300">Qwen/Qwen2.5-Coder-14B-Instruct</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- GitHub -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-700">
+        <div class="w-8 h-8 rounded-lg bg-gray-700 flex items-center justify-center">
+          <i class="fa-brands fa-github text-white text-sm"></i>
+        </div>
+        <div>
+          <h3 class="font-semibold text-white">GitHub</h3>
+          <p class="text-xs text-gray-500">For private repos and higher rate limits</p>
+        </div>
+      </div>
+      <div class="p-5 grid grid-cols-2 gap-4">
+        <config-field label="GitHub Token" key="GITHUB_TOKEN" secret :vars="vars" @update="setVar" class="col-span-2"></config-field>
+      </div>
+    </div>
+
+    <!-- App Settings -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-700">
+        <div class="w-8 h-8 rounded-lg bg-blue-900/60 flex items-center justify-center">
+          <i class="fa-solid fa-sliders text-blue-400 text-sm"></i>
+        </div>
+        <div>
+          <h3 class="font-semibold text-white">App Settings</h3>
+        </div>
+      </div>
+      <div class="p-5 grid grid-cols-2 gap-4">
+        <config-field label="App Environment" key="APP_ENV" :vars="vars" @update="setVar"></config-field>
+        <config-field label="Port" key="PORT" :vars="vars" @update="setVar"></config-field>
+        <config-field label="Log Level" key="LOG_LEVEL" :vars="vars" @update="setVar"></config-field>
+        <config-field label="Output Directory" key="OUTPUT_DIR" :vars="vars" @update="setVar"></config-field>
+        <config-field label="Database URL" key="DB_URL" :vars="vars" @update="setVar" class="col-span-2"></config-field>
+      </div>
+    </div>
+
+    <!-- MCP Server -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-700">
+        <div class="w-8 h-8 rounded-lg bg-green-900/60 flex items-center justify-center">
+          <i class="fa-solid fa-plug text-green-400 text-sm"></i>
+        </div>
+        <div>
+          <h3 class="font-semibold text-white">MCP Server</h3>
+          <p class="text-xs text-gray-500">Settings for this app's own MCP endpoint (used by Claude)</p>
+        </div>
+      </div>
+      <div class="p-5 grid grid-cols-2 gap-4">
+        <config-field label="MCP Host" key="MCP_SERVER_HOST" :vars="vars" @update="setVar"></config-field>
+        <config-field label="MCP Port" key="MCP_SERVER_PORT" :vars="vars" @update="setVar"></config-field>
+        <config-field label="MCP Auth Token" key="MCP_AUTH_TOKEN" secret :vars="vars" @update="setVar" class="col-span-2"></config-field>
+      </div>
+    </div>
+
+    <!-- Feature Flags -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-700">
+        <div class="w-8 h-8 rounded-lg bg-yellow-900/60 flex items-center justify-center">
+          <i class="fa-solid fa-toggle-on text-yellow-400 text-sm"></i>
+        </div>
+        <h3 class="font-semibold text-white">Feature Flags</h3>
+      </div>
+      <div class="p-5 space-y-3">
+        <template x-for="flag in featureFlags" :key="flag.key">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-white" x-text="flag.label"></p>
+              <p class="text-xs text-gray-500" x-text="flag.description"></p>
+            </div>
+            <button @click="toggleFlag(flag.key)"
+                    :class="getVar(flag.key) === 'true' ? 'bg-forge-600' : 'bg-gray-600'"
+                    class="relative w-11 h-6 rounded-full transition-colors flex items-center">
+              <span :class="getVar(flag.key) === 'true' ? 'translate-x-5' : 'translate-x-1'"
+                    class="w-4 h-4 bg-white rounded-full transition-transform shadow"></span>
+            </button>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Raw .env editor -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+        <h3 class="font-semibold text-white">Raw .env Editor</h3>
+        <button @click="showRaw = !showRaw" class="text-sm text-gray-400 hover:text-white">
+          <span x-text="showRaw ? 'Hide' : 'Show'"></span>
+        </button>
+      </div>
+      <div x-show="showRaw" class="p-5">
+        <p class="text-xs text-yellow-400 mb-3"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Edit with care. Invalid syntax will break the app.</p>
+        <textarea x-model="rawContent" rows="20"
+                  class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-xs font-mono text-green-400 focus:outline-none focus:border-forge-500"></textarea>
+        <button @click="saveRaw()"
+                class="mt-3 bg-yellow-700 hover:bg-yellow-600 text-white text-sm font-medium px-4 py-2 rounded-lg">
+          Save Raw
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function configPage() {
+  return {
+    vars: {},
+    rawContent: '',
+    showRaw: false,
+    saving: false,
+    dirty: [],
+    featureFlags: [
+      { key: 'ENABLE_LIVE_PROBING',  label: 'Live Endpoint Probing', description: 'Probe running apps to discover routes automatically' },
+      { key: 'ENABLE_SECURITY_AUDIT', label: 'Security Audit', description: 'Check generated code for hardcoded secrets and dangerous patterns' },
+      { key: 'ENABLE_GIT_SNAPSHOTS', label: 'Git Snapshots', description: 'Auto-commit each snapshot to a local git repository' },
+    ],
+
+    async init() {
+      const resp = await fetch('/api/config/');
+      const data = await resp.json();
+      this.vars = data.vars || {};
+
+      const raw = await fetch('/api/config/raw');
+      const rawData = await raw.json();
+      this.rawContent = rawData.content || '';
+    },
+
+    getVar(key) { return this.vars[key] || ''; },
+    setVar(key, value) {
+      this.vars[key] = value;
+      if (!this.dirty.includes(key)) this.dirty.push(key);
+      if (key === 'LLM_PROVIDER') {
+        window.dispatchEvent(new CustomEvent('provider-changed', { detail: value }));
+      }
+    },
+
+    toggleFlag(key) {
+      const current = this.vars[key] === 'true';
+      this.setVar(key, (!current).toString());
+    },
+
+    async saveAll() {
+      this.saving = true;
+      try {
+        const payload = Object.entries(this.vars).map(([key, value]) => ({ key, value }));
+        const resp = await fetch('/api/config/', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vars: payload }),
+        });
+        if (resp.ok) {
+          showToast({ type: 'success', message: '.env saved successfully' });
+          this.dirty = [];
+        } else {
+          showToast({ type: 'error', message: 'Failed to save' });
+        }
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    async saveRaw() {
+      showToast({ type: 'warning', message: 'Raw save coming soon — use Save Changes instead' });
+    },
+
+    async resetFromExample() {
+      if (!confirm('Reset .env to the template values? This will overwrite your current settings.')) return;
+      await fetch('/api/config/reset', { method: 'POST' });
+      await this.init();
+      showToast({ type: 'success', message: 'Reset from .env.example' });
+    },
+  };
+}
+
+function localModelStatus() {
+  return {
+    status: 'not_loaded',   // not_loaded | loading | loaded | error
+    vram: '',
+    loading: false,
+    _poll: null,
+
+    get statusLabel() {
+      if (this.status === 'loaded')     return 'Model loaded in memory';
+      if (this.status === 'loading')    return 'Loading model… (check docker logs for progress)';
+      if (this.status === 'error')      return 'Load failed — check docker logs';
+      return 'Model not loaded (will load on first use)';
+    },
+
+    async init() {
+      await this.refresh();
+    },
+
+    async refresh() {
+      try {
+        const r = await fetch('/api/config/local-model/status');
+        const d = await r.json();
+        this.status   = d.state;
+        this.vram     = d.vram_gb || '';
+      } catch { this.status = 'error'; }
+    },
+
+    async loadModel() {
+      this.loading = true;
+      this.status  = 'loading';
+      try {
+        const r = await fetch('/api/config/local-model/load', { method: 'POST' });
+        if (!r.ok) {
+          const e = await r.json();
+          showToast({ type: 'error', message: e.detail || 'Load failed' });
+          this.status  = 'error';
+          this.loading = false;
+          return;
+        }
+        showToast({ type: 'info', message: 'Model loading in background — this may take a while on first run…' });
+        // Poll every 5 s until loaded
+        this._poll = setInterval(async () => {
+          await this.refresh();
+          if (this.status === 'loaded' || this.status === 'error') {
+            clearInterval(this._poll);
+            this.loading = false;
+            if (this.status === 'loaded')
+              showToast({ type: 'success', message: 'Local model loaded and ready!' });
+          }
+        }, 5000);
+      } catch {
+        this.status  = 'error';
+        this.loading = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

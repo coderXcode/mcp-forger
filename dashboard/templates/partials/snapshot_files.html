@@ -1,0 +1,9 @@
+{% for fname, content in files.items() %}
+<div class="border border-gray-700 rounded-xl overflow-hidden">
+  <div class="bg-gray-800 px-4 py-2 flex items-center gap-2 border-b border-gray-700">
+    <i class="fa-solid fa-file-code text-forge-400 text-xs"></i>
+    <span class="text-xs font-mono font-semibold text-white">{{ fname }}</span>
+  </div>
+  <pre class="bg-gray-950 p-4 text-xs font-mono text-gray-300 overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap break-all">{{ content }}</pre>
+</div>
+{% endfor %}

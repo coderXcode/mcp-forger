@@ -1,0 +1,12 @@
+{
+  "_comment": "Option B — SSE mode (Docker-hosted, good for teams or remote access)",
+  "_comment2": "Copy this to: %APPDATA%\\Claude\\claude_desktop_config.json (Windows) or ~/Library/Application Support/Claude/claude_desktop_config.json (Mac)",
+  "mcpServers": {
+    "mcp-forge": {
+      "url": "http://localhost:8001/sse",
+      "headers": {
+        "X-MCP-Token": "changeme"
+      }
+    }
+  }
+}

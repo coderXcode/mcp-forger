@@ -1,0 +1,55 @@
+{% for snap in snapshots %}
+<div class="bg-gray-800 rounded-xl border {% if snap.is_active %}border-forge-600{% else %}border-gray-700{% endif %} p-5 flex items-center gap-4">
+  <!-- Version -->
+  <div class="w-12 h-12 rounded-xl {% if snap.is_active %}bg-forge-900 text-forge-400{% else %}bg-gray-700 text-gray-400{% endif %} flex flex-col items-center justify-center flex-shrink-0">
+    <span class="text-xs font-bold">v{{ snap.version }}</span>
+    {% if snap.is_active %}<span class="text-xs mt-0.5">active</span>{% endif %}
+  </div>
+
+  <!-- Info -->
+  <div class="flex-1 min-w-0">
+    <div class="flex items-center gap-2">
+      <p class="font-semibold text-white text-sm">{{ snap.label }}</p>
+      {% if snap.is_active %}
+      <span class="status-badge bg-forge-900 text-forge-300 text-xs">Active</span>
+      {% endif %}
+    </div>
+    <p class="text-xs text-gray-400 mt-0.5 truncate">{{ snap.description or 'No description' }}</p>
+    <div class="flex items-center gap-3 mt-1.5 text-xs text-gray-600">
+      <span><i class="fa-solid fa-file-code mr-1"></i>{{ snap.files | length }} files</span>
+      <span><i class="fa-solid fa-clock mr-1"></i>{{ snap.created_at.strftime('%b %d, %H:%M') }}</span>
+      {% if snap.diff %}
+      <span class="text-green-500">+{{ snap.diff.get('added', []) | length }}</span>
+      <span class="text-yellow-500">~{{ snap.diff.get('modified', []) | length }}</span>
+      <span class="text-red-500">-{{ snap.diff.get('removed', []) | length }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="flex gap-2">
+    {% if not snap.is_active %}
+    <button hx-post="/api/projects/{{ project_id }}/snapshots/{{ snap.version }}/rollback"
+            hx-swap="none"
+            hx-confirm="Rollback to v{{ snap.version }}? The current active snapshot will be replaced."
+            @htmx:after-request="htmx.trigger(document.body, 'snapshotUpdated'); showToast({type:'success', message:'Rolled back to v{{ snap.version }}'})"
+            class="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg transition-colors">
+      <i class="fa-solid fa-clock-rotate-left"></i> Rollback
+    </button>
+    {% endif %}
+    <button @click="$dispatch('snapshot-view', {version: {{ snap.version }}, projectId: {{ project_id }}})"
+            class="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg transition-colors">
+      <i class="fa-solid fa-eye"></i> Files
+    </button>
+    <button @click="$dispatch('snapshot-diff', {version: {{ snap.version }}, projectId: {{ project_id }}})"
+            class="flex items-center gap-1.5 text-xs bg-indigo-900 hover:bg-indigo-800 text-indigo-200 px-3 py-1.5 rounded-lg transition-colors">
+      <i class="fa-solid fa-code-compare"></i> Diff
+    </button>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-12 text-gray-600">
+  <i class="fa-solid fa-clock-rotate-left text-3xl mb-3 block"></i>
+  <p class="text-sm">No snapshots yet — generate code to create the first one.</p>
+</div>
+{% endfor %}

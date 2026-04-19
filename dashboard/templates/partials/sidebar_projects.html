@@ -1,0 +1,14 @@
+{% for project in projects %}
+<a href="/projects/{{ project.id }}"
+   class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-colors text-sm group">
+  <div class="w-2 h-2 rounded-full flex-shrink-0
+    {% if project.status.value == 'ready' %}bg-green-400
+    {% elif project.status.value in ['analyzing','generating','testing'] %}bg-yellow-400 animate-pulse
+    {% elif project.status.value == 'error' %}bg-red-400
+    {% else %}bg-gray-600{% endif %}">
+  </div>
+  <span class="truncate flex-1">{{ project.name }}</span>
+</a>
+{% else %}
+<p class="px-3 text-xs text-gray-600">No projects yet</p>
+{% endfor %}

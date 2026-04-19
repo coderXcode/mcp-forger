@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}MCP Forge{% endblock %}</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            forge: {
+              50:  '#f0f0ff',
+              100: '#e0e0ff',
+              200: '#c4b5fd',
+              300: '#a78bfa',
+              400: '#8b5cf6',
+              500: '#7c3aed',
+              600: '#6d28d9',
+              700: '#5b21b6',
+              800: '#4c1d95',
+              900: '#2e1065',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- HTMX -->
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <!-- HTMX Extensions -->
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/json-enc.js"></script>
+  <!-- Alpine.js -->
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <!-- highlight.js for code syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    .sidebar-link.active { @apply bg-forge-700 text-white; }
+    .status-badge { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium; }
+    .log-debug   { @apply text-gray-400; }
+    .log-info    { @apply text-blue-400; }
+    .log-warning { @apply text-yellow-400; }
+    .log-error   { @apply text-red-400; }
+    /* Scrollable log panel */
+    .log-panel { @apply font-mono text-xs bg-gray-950 rounded-lg p-3 overflow-y-auto; max-height: 400px; }
+    /* Diff viewer */
+    .diff-added   { @apply bg-green-900/40 border-l-2 border-green-500; }
+    .diff-removed { @apply bg-red-900/40 border-l-2 border-red-500; }
+    /* Notification dot pulse */
+    @keyframes ping-slow { 75%,100% { transform: scale(2); opacity: 0; } }
+    .ping-slow { animation: ping-slow 2s cubic-bezier(0,0,0.2,1) infinite; }
+  </style>
+</head>
+
+<body class="bg-gray-900 text-gray-100 min-h-screen flex" x-data="appState()" x-init="init()">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+  <aside class="w-64 bg-gray-950 border-r border-gray-800 flex flex-col flex-shrink-0">
+    <!-- Logo -->
+    <div class="h-16 flex items-center px-5 border-b border-gray-800">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-forge-600 flex items-center justify-center">
+          <i class="fa-solid fa-forge text-white text-sm"></i>
+          <span class="text-white font-bold text-sm">⚡</span>
+        </div>
+        <span class="font-bold text-lg text-white">MCP <span class="text-forge-400">Forge</span></span>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="flex-1 py-4 px-3 space-y-1">
+      <a href="/" class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors {% if request.url.path == '/' %}active{% endif %}">
+        <i class="fa-solid fa-gauge-high w-5 text-center"></i>
+        <span>Dashboard</span>
+      </a>
+      <a href="/projects/new" class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors">
+        <i class="fa-solid fa-plus w-5 text-center"></i>
+        <span>New Project</span>
+      </a>
+
+      <!-- Projects List -->
+      <div class="pt-3">
+        <p class="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Projects</p>
+        <div id="sidebar-projects" hx-get="/partials/sidebar-projects" hx-trigger="load, projectsUpdated from:body" class="space-y-1">
+          <!-- Loaded via HTMX -->
+        </div>
+      </div>
+    </nav>
+
+    <!-- Bottom nav -->
+    <div class="p-3 border-t border-gray-800 space-y-1">
+      <a href="/config" class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors {% if request.url.path == '/config' %}active{% endif %}">
+        <i class="fa-solid fa-gear w-5 text-center"></i>
+        <span>Config / .env</span>
+      </a>
+      <a href="/docs" target="_blank" class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors">
+        <i class="fa-solid fa-book w-5 text-center"></i>
+        <span>API Docs</span>
+      </a>
+    </div>
+  </aside>
+
+  <!-- ── Main ──────────────────────────────────────────────────────────── -->
+  <div class="flex-1 flex flex-col min-w-0">
+
+    <!-- Top Bar -->
+    <header class="h-16 bg-gray-950 border-b border-gray-800 flex items-center justify-between px-6 flex-shrink-0">
+      <div>
+        {% block header_title %}
+        <h1 class="text-lg font-semibold text-white">{% block page_title %}Dashboard{% endblock %}</h1>
+        {% endblock %}
+      </div>
+
+      <div class="flex items-center gap-4">
+        <!-- LLM Provider Badge -->
+        <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5 text-sm"
+             x-data="{ provider: '{{ settings.llm_provider | upper }}' }"
+             @provider-changed.window="provider = $event.detail.toUpperCase()">
+          <div class="w-2 h-2 rounded-full bg-green-400"></div>
+          <span class="text-gray-300" id="llm-provider" x-text="provider"></span>
+        </div>
+
+        <!-- Notification Bell -->
+        <div class="relative" x-data="notificationState()">
+          <button @click="open = !open; markSeen()"
+                  class="relative p-2 rounded-lg hover:bg-gray-800 transition-colors text-gray-300 hover:text-white">
+            <i class="fa-solid fa-bell text-lg"></i>
+            <template x-if="unread > 0">
+              <span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold" x-text="unread > 99 ? '99+' : unread">
+              </span>
+            </template>
+          </button>
+
+          <!-- Notification Dropdown -->
+          <div x-show="open" x-cloak @click.outside="open = false"
+               class="absolute right-0 top-12 w-96 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+            <div class="flex items-center justify-between p-4 border-b border-gray-700">
+              <h3 class="font-semibold text-white">Notifications</h3>
+              <button @click="markAllRead()" class="text-xs text-forge-400 hover:text-forge-300">Mark all read</button>
+            </div>
+            <div class="max-h-80 overflow-y-auto divide-y divide-gray-700" id="notification-list">
+              <template x-for="n in notifications" :key="n.id">
+                <a
+                  :href="n.link || '#'"
+                  @click="!n.link && $event.preventDefault(); open = false"
+                  class="block p-4 hover:bg-gray-750 transition-colors no-underline"
+                  :class="{'opacity-60': n.is_read}">
+                  <div class="flex items-start gap-3">
+                    <div class="mt-0.5 flex-shrink-0">
+                      <span :class="{
+                        'text-blue-400': n.type === 'info',
+                        'text-green-400': n.type === 'success',
+                        'text-yellow-400': n.type === 'warning' || n.type === 'question',
+                        'text-red-400': n.type === 'error'
+                      }">
+                        <i :class="{
+                          'fa-circle-info': n.type === 'info',
+                          'fa-circle-check': n.type === 'success',
+                          'fa-triangle-exclamation': n.type === 'warning',
+                          'fa-circle-question': n.type === 'question',
+                          'fa-circle-xmark': n.type === 'error'
+                        }" class="fa-solid text-sm"></i>
+                      </span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-medium text-white" x-text="n.title"></p>
+                      <p class="text-xs text-gray-400 mt-0.5" x-text="n.message"></p>
+                      <div class="flex items-center gap-2 mt-1">
+                        <p class="text-xs text-gray-500" x-text="timeAgo(n.created_at)"></p>
+                        <span x-show="n.link" class="text-xs text-forge-400">→ view</span>
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              </template>
+              <div x-show="notifications.length === 0" class="p-6 text-center text-gray-500 text-sm">
+                No notifications
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="flex-1 overflow-auto p-6">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <!-- ── Toast Container ───────────────────────────────────────────────── -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2" 
+       x-data x-on:show-toast.window="showToast($event.detail)">
+  </div>
+
+  <!-- ── SSE: Notification stream ─────────────────────────────────────── -->
+  <div hx-ext="sse" sse-connect="/api/notifications/stream"
+       sse-swap:notification="innerHTML" hx-target="#sse-sink" style="display:none">
+  </div>
+  <div id="sse-sink" style="display:none"
+       x-on:htmx:sse-message.window="handleSSEMessage($event)"></div>
+
+<script>
+function appState() {
+  return {
+    init() {
+      // Listen for SSE notification events
+      document.body.addEventListener('htmx:sseMessage', (e) => {
+        if (e.detail.type === 'notification') {
+          try {
+            const data = JSON.parse(e.detail.data);
+            this.$dispatch('new-notification', data);
+          } catch {}
+        }
+      });
+    }
+  };
+}
+
+function notificationState() {
+  return {
+    open: false,
+    unread: 0,
+    notifications: [],
+    async init() {
+      await this.loadNotifications();
+      // Poll every 15s
+      setInterval(() => this.loadNotifications(), 15000);
+    },
+    async loadNotifications() {
+      const resp = await fetch('/api/notifications?unread_only=false');
+      const data = await resp.json();
+      this.notifications = data;
+      this.unread = data.filter(n => !n.is_read).length;
+    },
+    async markSeen() {
+      if (this.unread > 0) {
+        await fetch('/api/notifications/read-all', { method: 'POST' });
+        this.notifications = this.notifications.map(n => ({...n, is_read: true}));
+        this.unread = 0;
+      }
+    },
+    async markAllRead() {
+      await fetch('/api/notifications/read-all', { method: 'POST' });
+      this.notifications = this.notifications.map(n => ({...n, is_read: true}));
+      this.unread = 0;
+    },
+  };
+}
+
+function timeAgo(isoStr) {
+  const diff = (Date.now() - new Date(isoStr)) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return Math.floor(diff/86400) + 'd ago';
+}
+
+// Toast system
+function showToast(detail) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  const colors = {success: 'bg-green-800 border-green-600', error: 'bg-red-800 border-red-600', info: 'bg-gray-800 border-gray-600', warning: 'bg-yellow-800 border-yellow-600'};
+  toast.className = `flex items-center gap-3 px-4 py-3 rounded-lg border shadow-xl text-sm text-white transition-all ${colors[detail.type || 'info']}`;
+  toast.innerHTML = `<span>${detail.message}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Init syntax highlighting
+  if (typeof hljs !== 'undefined') hljs.highlightAll();
+});
+
+// HTMX global event hook — show toast on errors
+document.body.addEventListener('htmx:responseError', (e) => {
+  showToast({ type: 'error', message: `Request failed: ${e.detail.xhr.status}` });
+});
+</script>
+
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,780 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — MCP Forge{% endblock %}
+{% block page_title %}{{ project.name }}{% endblock %}
+
+{% block header_title %}
+<div>
+  <div class="flex items-center gap-3">
+    <h1 class="text-lg font-semibold text-white">{{ project.name }}</h1>
+    <div id="project-status-badge-wrapper">
+      <span class="status-badge
+        {% if project.status.value == 'ready' %}bg-green-900 text-green-300
+        {% elif project.status.value in ['analyzing','generating','testing'] %}bg-yellow-900 text-yellow-300
+        {% elif project.status.value == 'error' %}bg-red-900 text-red-300
+        {% else %}bg-gray-700 text-gray-400{% endif %}">
+        {% if project.status.value in ['analyzing','generating','testing'] %}
+          <i class="fa-solid fa-spinner fa-spin mr-1.5 text-xs"></i>
+        {% endif %}
+        {{ project.status.value | title }}
+      </span>
+    </div>
+  </div>
+  <p class="text-sm text-gray-400">{{ project.description or project.source_url or 'No description' }}</p>
+</div>
+{% endblock %}
+
+{% block content %}
+<div x-data="projectPage({{ project.id }})" x-init="init()" data-project-id="{{ project.id }}">
+
+  <!-- ── Tab Bar ───────────────────────────────────────────────────────── -->
+  <div class="flex gap-1 border-b border-gray-700 mb-6 -mt-2">
+    {% set tabs = [
+      ('overview', 'fa-chart-bar', 'Overview'),
+      ('chat', 'fa-comments', 'Chat'),
+      ('code', 'fa-code', 'Generated Code'),
+      ('tests', 'fa-flask-vial', 'Tests'),
+      ('snapshots', 'fa-clock-rotate-left', 'Snapshots'),
+      ('logs', 'fa-terminal', 'Logs'),
+    ] %}
+    {% for tab_id, icon, label in tabs %}
+    <button @click="activeTab = '{{ tab_id }}'"
+            :class="activeTab === '{{ tab_id }}' ? 'border-forge-500 text-forge-400' : 'border-transparent text-gray-400 hover:text-gray-200'"
+            class="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors">
+      <i class="fa-solid {{ icon }}"></i>
+      {{ label }}
+      {% if tab_id == 'tests' %}
+      <span id="test-badge" class="hidden bg-green-900 text-green-300 text-xs px-1.5 py-0.5 rounded-full"></span>
+      {% endif %}
+    </button>
+    {% endfor %}
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Overview -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <div x-show="activeTab === 'overview'" class="space-y-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <!-- Project Info -->
+      <div class="bg-gray-800 rounded-xl border border-gray-700 p-5">
+        <h3 class="font-semibold text-white mb-4">Project Details</h3>
+        <dl class="space-y-3 text-sm">
+          <div class="flex justify-between">
+            <dt class="text-gray-400">Source Type</dt>
+            <dd class="text-white font-mono">{{ project.source_type.value }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-400">Target Language</dt>
+            <dd class="text-white font-mono">{{ project.target_language.value }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-400">Source URL</dt>
+            <dd class="text-white truncate max-w-xs text-xs">{{ project.source_url or '—' }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-400">Created</dt>
+            <dd class="text-white">{{ project.created_at.strftime('%b %d, %Y') }}</dd>
+          </div>
+          <div class="flex justify-between border-t border-gray-700 pt-3 mt-1">
+            <dt class="text-gray-400">LLM Provider</dt>
+            <dd class="text-forge-400 font-mono text-xs">{{ settings.llm_provider | upper }}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-400">Model</dt>
+            <dd class="text-white font-mono text-xs truncate max-w-xs">{{ settings.active_llm_model if settings.llm_provider != 'local' else settings.local_model }}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <!-- Analysis Summary -->
+      <div class="bg-gray-800 rounded-xl border border-gray-700 p-5"
+           hx-get="/partials/analysis-summary/{{ project.id }}"
+           hx-trigger="load, every 8s"
+           hx-swap="innerHTML">
+        <h3 class="font-semibold text-white mb-4">Analysis Summary</h3>
+        <div class="flex items-center justify-center h-20 text-gray-500">
+          <i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading...
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions Row -->
+    <div class="flex flex-wrap gap-3">
+      <button hx-post="/api/projects/{{ project.id }}/analyze"
+              hx-swap="none"
+              @htmx:after-request="onAction($event, 'Analysis started')"
+              class="flex items-center gap-2 bg-blue-700 hover:bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+        <i class="fa-solid fa-magnifying-glass"></i> Re-analyze
+      </button>
+      <button @click="activeTab = 'code'; triggerGenerate()"
+              class="flex items-center gap-2 bg-forge-600 hover:bg-forge-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+        <i class="fa-solid fa-bolt"></i> Generate MCP
+      </button>
+      <button hx-post="/api/projects/{{ project.id }}/tests/run"
+              hx-swap="none"
+              hx-vals='{"regenerate_tests": true}'
+              @htmx:after-request="onAction($event, 'Tests running...')"
+              class="flex items-center gap-2 bg-green-700 hover:bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+        <i class="fa-solid fa-play"></i> Run Tests
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Chat -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <div x-show="activeTab === 'chat'" x-cloak class="flex flex-col h-[calc(100vh-280px)]">
+    <!-- Message History -->
+    <div class="flex-1 overflow-y-auto space-y-4 mb-4 pr-1" id="chat-messages"
+         hx-get="/partials/chat-messages/{{ project.id }}"
+         hx-trigger="load, chatUpdated from:body"
+         hx-swap="innerHTML">
+    </div>
+
+    <!-- Pending Clarifications -->
+    <div id="clarifications-panel"
+         hx-get="/partials/clarifications/{{ project.id }}"
+         hx-trigger="load, clarificationUpdated from:body"
+         hx-swap="innerHTML" class="mb-2">
+    </div>
+
+    <!-- Input -->
+    <div class="flex gap-3 items-end">
+      <div class="flex-1">
+        <textarea id="chat-input"
+                  x-model="chatInput"
+                  @keydown.enter.prevent="if (!$event.shiftKey) sendMessage()"
+                  placeholder="Ask the agent anything... (Enter to send, Shift+Enter for newline)"
+                  rows="2"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-forge-500 resize-none"></textarea>
+      </div>
+      <button @click="sendMessage()"
+              :disabled="sending || !chatInput.trim()"
+              class="flex-shrink-0 bg-forge-600 hover:bg-forge-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition-colors">
+        <i class="fa-solid" :class="sending ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
+      </button>
+    </div>
+    <p class="text-xs text-gray-600 mt-1">Agent: <span class="text-forge-400">{{ settings.llm_provider | upper }}</span> — {{ settings.active_llm_model }}</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Generated Code -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <div x-show="activeTab === 'code'" x-cloak>
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-semibold text-white">Generated MCP Files</h3>
+      <div class="flex gap-2">
+        <select x-model="targetLang"
+                class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-forge-500">
+          <option value="python_fastmcp">Python (FastMCP)</option>
+          <option value="nodejs">Node.js</option>
+          <option value="go">Go</option>
+        </select>
+        <button @click="generateMCP()"
+                :disabled="generating"
+                class="flex items-center gap-2 bg-forge-600 hover:bg-forge-500 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+          <i class="fa-solid" :class="generating ? 'fa-spinner fa-spin' : 'fa-bolt'"></i>
+          <span x-text="generating ? 'Generating...' : 'Generate / Regenerate'"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-5 gap-4 h-[calc(100vh-320px)]">
+      <!-- File Tree -->
+      <div class="col-span-1 bg-gray-800 rounded-xl border border-gray-700 p-4 overflow-y-auto">
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Files</p>
+        <template x-for="fname in Object.keys(generatedFiles)" :key="fname">
+          <button @click="selectedFile = fname"
+                  :class="selectedFile === fname ? 'bg-forge-900 text-forge-300' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
+                  class="w-full text-left px-2 py-1.5 rounded text-xs font-mono truncate transition-colors">
+            <i class="fa-solid fa-file-code mr-1.5 text-xs"></i>
+            <span x-text="fname"></span>
+          </button>
+        </template>
+        <div x-show="Object.keys(generatedFiles).length === 0" class="text-xs text-gray-600 text-center mt-4">
+          No files generated yet
+        </div>
+      </div>
+
+      <!-- Code Viewer -->
+      <div class="col-span-4 bg-gray-800 rounded-xl border border-gray-700 overflow-hidden flex flex-col">
+        <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-700 bg-gray-900/50">
+          <span class="text-xs font-mono text-gray-400" x-text="selectedFile || 'Select a file'"></span>
+          <button @click="copyFile()" x-show="selectedFile"
+                  class="text-xs text-gray-500 hover:text-white transition-colors">
+            <i class="fa-solid fa-copy mr-1"></i>Copy
+          </button>
+        </div>
+        <div class="flex-1 overflow-auto">
+          <pre class="p-4 text-xs"><code :class="`language-${fileLanguage()}`" x-text="generatedFiles[selectedFile] || ''"></code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Validation Results -->
+    <div x-show="validation" class="mt-4 bg-gray-800 rounded-xl border border-gray-700 p-4">
+      <h4 class="font-semibold text-sm text-white mb-3">Validation Results</h4>
+      <template x-if="validation && !validation.valid">
+        <div class="space-y-1.5">
+          <template x-for="err in validation.errors">
+            <div class="flex items-center gap-2 text-sm text-red-400">
+              <i class="fa-solid fa-xmark text-xs"></i> <span x-text="err"></span>
+            </div>
+          </template>
+        </div>
+      </template>
+      <template x-if="validation && validation.valid">
+        <p class="text-sm text-green-400"><i class="fa-solid fa-check mr-2"></i>All checks passed</p>
+      </template>
+      <template x-for="warn in (validation?.warnings || [])">
+        <div class="flex items-center gap-2 text-sm text-yellow-400 mt-1">
+          <i class="fa-solid fa-triangle-exclamation text-xs"></i> <span x-text="warn"></span>
+        </div>
+      </template>
+      <template x-for="issue in (validation?.security_issues || [])">
+        <div class="flex items-center gap-2 text-sm text-orange-400 mt-1">
+          <i class="fa-solid fa-shield-halved text-xs"></i> <span x-text="issue"></span>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Tests -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <div x-show="activeTab === 'tests'" x-cloak class="space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="font-semibold text-white">Test Runs</h3>
+      <div class="flex gap-2">
+        <button @click="runTests(false)"
+                class="flex items-center gap-2 bg-green-700 hover:bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+          <i class="fa-solid fa-play"></i> Run Tests
+        </button>
+        <button @click="runTests(true)"
+                class="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Regenerate & Run
+        </button>
+      </div>
+    </div>
+
+    <!-- Test Runs List -->
+    <div x-data="{ openCode: {}, openOutput: {} }">
+      <div class="space-y-3" id="test-runs-list"
+           hx-get="/partials/test-runs/{{ project.id }}"
+           hx-trigger="load, testRunUpdated from:body, every 5s"
+           hx-swap="innerHTML">
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Snapshots -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <div x-show="activeTab === 'snapshots'" x-cloak class="space-y-4">
+    <h3 class="font-semibold text-white">Version History</h3>
+    <div id="snapshot-list"
+         hx-get="/partials/snapshot-list/{{ project.id }}"
+         hx-trigger="load, snapshotUpdated from:body"
+         hx-swap="innerHTML">
+    </div>
+  </div>
+
+<!-- Snapshot Viewer Modal -->
+<div id="snapshot-files-modal"
+     x-data="snapshotModal()"
+     x-show="open"
+     x-cloak
+     @snapshot-view.window="openFiles($event.detail)"
+     @snapshot-diff.window="openDiff($event.detail)"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+     @click.self="open = false">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl">
+
+    <!-- Header -->
+    <div class="flex items-center gap-4 px-6 py-4 border-b border-gray-700 flex-shrink-0 flex-wrap">
+      <h3 class="font-semibold text-white flex-shrink-0">
+        Snapshot <span x-text="'v' + version"></span>
+      </h3>
+      <!-- Tab switcher -->
+      <div class="flex gap-1 bg-gray-800 rounded-lg p-0.5 flex-shrink-0">
+        <button @click="switchMode('files')"
+                :class="mode === 'files' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'"
+                class="px-3 py-1 rounded text-xs font-medium transition-colors">
+          <i class="fa-solid fa-file-code mr-1"></i>Files
+        </button>
+        <button @click="switchMode('diff')"
+                :class="mode === 'diff' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'"
+                class="px-3 py-1 rounded text-xs font-medium transition-colors">
+          <i class="fa-solid fa-code-compare mr-1"></i>Diff
+        </button>
+      </div>
+      <!-- Compare-with picker (diff mode only) -->
+      <div x-show="mode === 'diff'" class="flex items-center gap-2 flex-shrink-0">
+        <span class="text-xs text-gray-500">Compare with:</span>
+        <select x-model="baseVersion"
+                @change="onBaseChange()"
+                class="bg-gray-800 border border-gray-600 text-white text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-indigo-500">
+          <option value="0">— original source —</option>
+          <template x-for="v in compareVersions" :key="v.version">
+            <option :value="v.version" x-text="'v' + v.version + ' — ' + v.label + (v.is_active ? ' (active)' : '')"></option>
+          </template>
+        </select>
+      </div>
+      <button @click="open = false" class="ml-auto text-gray-400 hover:text-white text-xl leading-none flex-shrink-0">&times;</button>
+    </div>
+
+    <!-- Loading state -->
+    <div x-show="loading" class="flex items-center justify-center flex-1 text-gray-500 gap-3 py-16">
+      <i class="fa-solid fa-spinner fa-spin"></i> Loading&hellip;
+    </div>
+
+    <!-- Body: Files mode -->
+    <div x-show="!loading && mode === 'files'" class="flex flex-1 overflow-hidden">
+      <!-- File tree sidebar -->
+      <div class="w-52 border-r border-gray-700 overflow-y-auto flex-shrink-0 p-2">
+        <p class="text-xs text-gray-500 uppercase tracking-wider px-2 py-1 mb-1">Files</p>
+        <template x-for="fname in fileTree" :key="fname">
+          <button @click="selectedFile = fname"
+                  :class="selectedFile === fname ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
+                  class="w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-mono truncate transition-colors">
+            <i class="fa-solid fa-file-code text-forge-500 text-xs flex-shrink-0"></i>
+            <span class="truncate" x-text="fname"></span>
+          </button>
+        </template>
+        <div x-show="fileTree.length === 0" class="text-xs text-gray-600 px-2 py-3">No files</div>
+      </div>
+      <!-- File content -->
+      <div class="flex-1 overflow-auto">
+        <template x-if="selectedFile">
+          <div>
+            <div class="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center gap-2">
+              <i class="fa-solid fa-file-code text-forge-400 text-xs"></i>
+              <span class="text-xs font-mono font-semibold text-white" x-text="selectedFile"></span>
+            </div>
+            <pre class="p-4 text-xs font-mono text-gray-300 whitespace-pre-wrap break-all leading-5" x-text="filesData[selectedFile]"></pre>
+          </div>
+        </template>
+        <div x-show="!selectedFile" class="flex items-center justify-center h-full text-gray-600 text-sm">Select a file</div>
+      </div>
+    </div>
+
+    <!-- Body: Diff mode -->
+    <div x-show="!loading && mode === 'diff'" class="flex flex-1 overflow-hidden">
+      <!-- Changed files sidebar -->
+      <div class="w-52 border-r border-gray-700 overflow-y-auto flex-shrink-0 p-2">
+        <p class="text-xs text-gray-500 uppercase tracking-wider px-2 py-1 mb-1">Changed Files</p>
+        <template x-for="f in diffFiles" :key="f.name">
+          <button @click="selectedFile = f.name"
+                  :class="selectedFile === f.name ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'"
+                  class="w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-mono truncate transition-colors">
+            <span :class="{'text-green-400': f.status==='added', 'text-red-400': f.status==='removed', 'text-yellow-400': f.status==='modified'}"
+                  class="flex-shrink-0 font-bold w-3 text-center"
+                  x-text="f.status==='added' ? '+' : f.status==='removed' ? '-' : '~'"></span>
+            <span class="truncate" x-text="f.name"></span>
+          </button>
+        </template>
+        <div x-show="diffFiles.length === 0 && diffData" class="text-xs text-gray-600 px-2 py-3">No changes</div>
+      </div>
+      <!-- Diff content -->
+      <div class="flex-1 overflow-auto bg-gray-950">
+        <template x-if="selectedFile && diffData">
+          <div>
+            <div class="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center gap-3">
+              <i class="fa-solid fa-code-compare text-indigo-400 text-xs"></i>
+              <span class="text-xs font-mono font-semibold text-white" x-text="selectedFile"></span>
+              <template x-for="f in diffFiles" :key="f.name">
+                <span x-show="f.name === selectedFile"
+                      :class="{'bg-green-900 text-green-300': f.status==='added', 'bg-red-900 text-red-300': f.status==='removed', 'bg-yellow-900 text-yellow-300': f.status==='modified'}"
+                      class="text-xs px-2 py-0.5 rounded-full font-medium"
+                      x-text="f.status"></span>
+              </template>
+            </div>
+            <div class="p-2">
+              <template x-for="(hunk, i) in (diffData.hunks[selectedFile] || [])" :key="i">
+                <div :class="{
+                       'bg-green-950 border-l-2 border-green-500 text-green-300': hunk.type==='added',
+                       'bg-red-950 border-l-2 border-red-500 text-red-300': hunk.type==='removed',
+                       'text-gray-500': hunk.type==='context',
+                       'text-blue-400 bg-gray-800 my-1 rounded px-2 py-0.5': hunk.type==='header'
+                     }"
+                     class="font-mono text-xs leading-5 px-3 whitespace-pre-wrap break-all"
+                     x-text="hunk.text"></div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <div x-show="!selectedFile" class="flex items-center justify-center h-full text-gray-600 text-sm">Select a file</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function snapshotModal() {
+  return {
+    open: false,
+    mode: 'files',
+    version: null,
+    projectId: null,
+    filesData: {},
+    diffData: null,
+    selectedFile: null,
+    loading: false,
+    allVersions: [],   // all snapshots for this project
+    baseVersion: null, // currently selected base version (null = auto/prev, 0 = empty)
+
+    get fileTree() {
+      return Object.keys(this.filesData).sort();
+    },
+    get diffFiles() {
+      if (!this.diffData) return [];
+      const d = this.diffData.files;
+      return [
+        ...(d.modified || []).map(f => ({name: f, status: 'modified'})),
+        ...(d.added    || []).map(f => ({name: f, status: 'added'})),
+        ...(d.removed  || []).map(f => ({name: f, status: 'removed'})),
+      ];
+    },
+    // versions available to compare against (all except the current one)
+    get compareVersions() {
+      return this.allVersions.filter(v => v.version !== this.version);
+    },
+
+    async _loadAllVersions() {
+      try {
+        const r = await fetch(`/api/projects/${this.projectId}/snapshots/`);
+        this.allVersions = await r.json();
+      } catch(e) { this.allVersions = []; }
+    },
+
+    async openFiles(detail) {
+      this.version = detail.version;
+      this.projectId = detail.projectId;
+      this.mode = 'files';
+      this.filesData = {};
+      this.diffData = null;
+      this.selectedFile = null;
+      this.allVersions = [];
+      this.open = true;
+      this.loading = true;
+      try {
+        const r = await fetch(`/api/projects/${this.projectId}/snapshots/${this.version}/files`);
+        const data = await r.json();
+        this.filesData = data.files || {};
+        const keys = Object.keys(this.filesData).sort();
+        this.selectedFile = keys[0] || null;
+      } finally { this.loading = false; }
+    },
+
+    async openDiff(detail) {
+      this.version = detail.version;
+      this.projectId = detail.projectId;
+      this.mode = 'diff';
+      this.filesData = {};
+      this.diffData = null;
+      this.selectedFile = null;
+      this.allVersions = [];
+      this.open = true;
+      this.loading = true;
+      await this._loadAllVersions();
+      // Default base: immediately preceding version
+      const prevVer = this.compareVersions.filter(v => v.version < this.version);
+      this.baseVersion = prevVer.length ? prevVer[prevVer.length - 1].version : 0;
+      await this._loadDiff();
+    },
+
+    async switchMode(newMode) {
+      if (this.mode === newMode) return;
+      this.mode = newMode;
+      if (newMode === 'diff') {
+        if (this.allVersions.length === 0) await this._loadAllVersions();
+        if (!this.diffData) {
+          const prevVer = this.compareVersions.filter(v => v.version < this.version);
+          this.baseVersion = prevVer.length ? prevVer[prevVer.length - 1].version : 0;
+          this.loading = true;
+          await this._loadDiff();
+        } else {
+          this.selectedFile = this.diffFiles[0]?.name || null;
+        }
+      } else {
+        if (Object.keys(this.filesData).length === 0) {
+          this.loading = true;
+          try {
+            const r = await fetch(`/api/projects/${this.projectId}/snapshots/${this.version}/files`);
+            const data = await r.json();
+            this.filesData = data.files || {};
+            const keys = Object.keys(this.filesData).sort();
+            this.selectedFile = keys[0] || null;
+          } finally { this.loading = false; }
+        } else {
+          this.selectedFile = Object.keys(this.filesData).sort()[0] || null;
+        }
+      }
+    },
+
+    async onBaseChange() {
+      this.loading = true;
+      this.diffData = null;
+      this.selectedFile = null;
+      await this._loadDiff();
+    },
+
+    async _loadDiff() {
+      try {
+        const base = this.baseVersion;
+        const url = base != null
+          ? `/api/projects/${this.projectId}/snapshots/${this.version}/diff?base=${base}`
+          : `/api/projects/${this.projectId}/snapshots/${this.version}/diff`;
+        const r = await fetch(url);
+        this.diffData = await r.json();
+        this.selectedFile = this.diffFiles[0]?.name || null;
+      } finally { this.loading = false; }
+    },
+  };
+}
+</script>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Logs -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <div x-show="activeTab === 'logs'" x-cloak>
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-semibold text-white">Project Logs</h3>
+      <div class="flex items-center gap-2">
+        <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+        <span class="text-xs text-gray-500">Live</span>
+      </div>
+    </div>
+    <div class="log-panel h-[calc(100vh-320px)] overflow-y-auto font-mono text-xs space-y-0.5 p-3 bg-gray-950 rounded-xl border border-gray-800"
+         id="project-log-panel">
+      <p class="text-gray-600 italic">Connecting to log stream…</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function projectPage(projectId) {
+  return {
+    activeTab: 'overview',
+    chatInput: '',
+    sending: false,
+    generatedFiles: {},
+    selectedFile: null,
+    validation: null,
+    generating: false,
+    targetLang: 'python_fastmcp',
+
+    async init() {
+      // Support ?tab=xxx deep-links (e.g. from notification clicks)
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      const validTabs = ['overview', 'chat', 'code', 'tests', 'snapshots', 'logs'];
+      if (tab && validTabs.includes(tab)) this.activeTab = tab;
+      await this.loadGeneratedFiles();
+    },
+
+    async loadGeneratedFiles() {
+      const resp = await fetch(`/api/projects/${projectId}/generate/files`);
+      if (resp.ok) {
+        const data = await resp.json();
+        this.generatedFiles = data.files || {};
+        if (!this.selectedFile && Object.keys(this.generatedFiles).length > 0) {
+          this.selectedFile = Object.keys(this.generatedFiles)[0];
+        }
+        this.$nextTick(() => { if (typeof hljs !== 'undefined') hljs.highlightAll(); });
+      }
+    },
+
+    async sendMessage() {
+      if (!this.chatInput.trim() || this.sending) return;
+      this.sending = true;
+      const msg = this.chatInput;
+      this.chatInput = '';
+
+      try {
+        const resp = await fetch(`/api/projects/${projectId}/chat/send`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ content: msg }),
+        });
+        const data = await resp.json();
+        htmx.trigger(document.body, 'chatUpdated');
+        // Scroll to bottom
+        setTimeout(() => {
+          const el = document.getElementById('chat-messages');
+          if (el) el.scrollTop = el.scrollHeight;
+        }, 200);
+      } finally {
+        this.sending = false;
+      }
+    },
+
+    async generateMCP() {
+      this.generating = true;
+      try {
+        const resp = await fetch(`/api/projects/${projectId}/generate/`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ target_language: this.targetLang }),
+        });
+        showToast({ type: 'info', message: 'Generation started — this may take a moment' });
+        // Poll for completion
+        await this.pollForFiles();
+      } catch(e) {
+        showToast({ type: 'error', message: 'Generation failed' });
+      } finally {
+        this.generating = false;
+      }
+    },
+
+    async pollForFiles() {
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const resp = await fetch(`/api/projects/${projectId}/generate/files`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (Object.keys(data.files || {}).length > 0) {
+            this.generatedFiles = data.files;
+            this.selectedFile = Object.keys(data.files)[0];
+            this.$nextTick(() => { if (typeof hljs !== 'undefined') hljs.highlightAll(); });
+            // Also validate
+            await this.validateCode();
+            return;
+          }
+        }
+      }
+    },
+
+    async validateCode() {
+      const resp = await fetch(`/api/projects/${projectId}/generate/validate`);
+      if (resp.ok) this.validation = await resp.json();
+    },
+
+    async runTests(regenerate) {
+      const resp = await fetch(`/api/projects/${projectId}/tests/run`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ regenerate_tests: regenerate }),
+      });
+      showToast({ type: 'info', message: 'Test run started' });
+      htmx.trigger(document.body, 'testRunUpdated');
+    },
+
+    async copyFile() {
+      const content = this.generatedFiles[this.selectedFile] || '';
+      await navigator.clipboard.writeText(content);
+      showToast({ type: 'success', message: 'Copied to clipboard' });
+    },
+
+    fileLanguage() {
+      if (!this.selectedFile) return 'plaintext';
+      const ext = this.selectedFile.split('.').pop();
+      return { py: 'python', js: 'javascript', ts: 'typescript', go: 'go', json: 'json', md: 'markdown' }[ext] || 'plaintext';
+    },
+
+    triggerGenerate() {
+      setTimeout(() => this.generateMCP(), 100);
+    },
+
+    onAction(e, msg) {
+      if (e.detail.successful) showToast({ type: 'success', message: msg });
+    },
+  };
+}
+
+// ── Project log SSE ──────────────────────────────────────────────────────────
+(function () {
+  const LEVEL_CLASS = {
+    info:    'text-gray-300',
+    warning: 'text-yellow-400',
+    warn:    'text-yellow-400',
+    error:   'text-red-400',
+    debug:   'text-gray-500',
+  };
+
+  function connectLogStream(projectId) {
+    const panel = document.getElementById('project-log-panel');
+    if (!panel) return;
+
+    const es = new EventSource(`/api/projects/${projectId}/logs/stream`);
+    let firstEvent = true;
+
+    es.addEventListener('log', (e) => {
+      if (firstEvent) {
+        // Clear the "Connecting…" placeholder
+        panel.innerHTML = '';
+        firstEvent = false;
+      }
+      try {
+        const log = JSON.parse(e.data);
+        const ts  = new Date(log.created_at).toLocaleTimeString();
+        const cls = LEVEL_CLASS[log.level] || 'text-gray-300';
+        const row = document.createElement('div');
+        row.className = `flex gap-2 py-0.5 ${cls}`;
+        row.innerHTML = `<span class="text-gray-600 flex-shrink-0">${ts}</span>`
+                      + `<span class="text-gray-500 flex-shrink-0 w-16">[${log.level.toUpperCase()}]</span>`
+                      + `<span class="flex-1 break-all">${log.message}</span>`;
+        panel.appendChild(row);
+        panel.scrollTop = panel.scrollHeight;
+      } catch (_) {}
+    });
+
+    es.onerror = () => {
+      // Reconnect after 3s on error
+      es.close();
+      setTimeout(() => connectLogStream(projectId), 3000);
+    };
+  }
+
+  // ── Status badge poller ────────────────────────────────────────────────────
+  (function () {
+    const ACTIVE = ['analyzing', 'generating', 'testing'];
+    const wrapper = document.getElementById('project-status-badge-wrapper');
+    if (!wrapper) return;
+
+    let timer = null;
+    let seenActive = false;
+
+    // Seed seenActive from the current rendered badge
+    const initialSpan = wrapper.querySelector('.status-badge');
+    const initialText = initialSpan ? initialSpan.textContent.trim().toLowerCase() : '';
+    if (ACTIVE.includes(initialText)) seenActive = true;
+
+    function poll() {
+      const projectId = wrapper.closest('[data-project-id]')?.dataset.projectId
+                     || window.location.pathname.split('/').filter(Boolean).pop();
+      fetch('/partials/project-status/' + projectId)
+        .then(r => r.text())
+        .then(html => {
+          wrapper.innerHTML = html;
+          const span = wrapper.querySelector('.status-badge');
+          const status = span ? span.textContent.trim().toLowerCase() : '';
+          if (ACTIVE.includes(status)) {
+            seenActive = true;  // we're in an active state — mark it
+          } else if (seenActive) {
+            // Transitioned from active → final: reload once
+            clearInterval(timer);
+            window.location.reload();
+          }
+          // If never seen active and still not active: just keep polling silently
+        })
+        .catch(() => {});
+    }
+
+    timer = setInterval(poll, 2000);
+  })();
+
+  // Start when Logs tab is opened (Alpine detects activeTab change)
+  document.addEventListener('DOMContentLoaded', () => {
+    const panel = document.getElementById('project-log-panel');
+    if (panel) {
+      const projectId = document.querySelector('[data-project-id]')?.dataset.projectId
+                      || window.location.pathname.split('/').filter(Boolean).pop();
+      connectLogStream(projectId);
+    }
+  });
+})();
+</script>
+{% endblock %}

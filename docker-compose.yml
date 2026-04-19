@@ -1,0 +1,92 @@
+services:
+  # ── Main web app (FastAPI dashboard + API) ──────────────────────────────
+  app:
+    build: .
+    image: mcp-forge-app
+    container_name: mcp_forge_app
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - .:/app                          # live reload in dev
+      - mcp_forge_data:/app/data
+      - mcp_forge_logs:/app/logs
+      - ./generated:/app/generated     # bind-mount so files appear on host
+      - ./mnt:/mnt:ro                   # drop project folders into mnt/ to use them
+      - ./cache/huggingface:/root/.cache/huggingface  # persist model downloads (visible in File Explorer)
+    env_file:
+      - .env
+    environment:
+      - DB_URL=sqlite+aiosqlite:///./data/mcp_forge.db
+    command: >
+      uvicorn main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+    depends_on:
+      - redis
+    # ── GPU (NVIDIA) — comment out if no GPU or on Mac ──────────────────────
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── MCP Server (exposed to Claude Desktop) ──────────────────────────────
+  mcp:
+    build: .
+    image: mcp-forge-mcp
+    container_name: mcp_forge_mcp
+    restart: unless-stopped
+    ports:
+      - "${MCP_SERVER_PORT:-8001}:8001"
+    volumes:
+      - .:/app
+      - mcp_forge_data:/app/data
+    env_file:
+      - .env
+    environment:
+      - APP_URL=http://app:8000
+      - MCP_TRANSPORT=sse
+      - MCP_SERVER_PORT=8001
+    command: python mcp_server/server.py
+    depends_on:
+      - app
+
+  # ── Redis (pub/sub for real-time dashboard updates) ──────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: mcp_forge_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - mcp_forge_redis:/data
+    command: redis-server --appendonly yes
+
+  # ── PostgreSQL (uncomment for production) ───────────────────────────────
+  # db:
+  #   image: postgres:16-alpine
+  #   container_name: mcp_forge_db
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     POSTGRES_USER: mcp_forge
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-mcp_forge_secret}
+  #     POSTGRES_DB: mcp_forge
+  #   volumes:
+  #     - mcp_forge_postgres:/var/lib/postgresql/data
+
+volumes:
+  mcp_forge_data:
+  mcp_forge_logs:
+  mcp_forge_redis:
+  # mcp_forge_postgres:

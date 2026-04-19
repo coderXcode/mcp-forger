@@ -1,0 +1,28 @@
+{% for msg in messages %}
+<div class="flex gap-3 {% if msg.role.value == 'user' %}flex-row-reverse{% endif %}">
+  <!-- Avatar -->
+  <div class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold
+    {% if msg.role.value == 'user' %}bg-forge-700 text-white{% else %}bg-gray-700 text-gray-300{% endif %}">
+    {% if msg.role.value == 'user' %}U{% else %}<i class="fa-solid fa-robot"></i>{% endif %}
+  </div>
+  <!-- Bubble -->
+  <div class="max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed
+    {% if msg.role.value == 'user' %}bg-forge-700 text-white rounded-tr-none
+    {% else %}bg-gray-800 text-gray-200 border border-gray-700 rounded-tl-none{% endif %}">
+    <div class="whitespace-pre-wrap">{{ msg.content }}</div>
+    <p class="text-xs opacity-50 mt-2 {% if msg.role.value == 'user' %}text-right{% endif %}">
+      {{ msg.created_at.strftime('%H:%M') }}
+    </p>
+  </div>
+</div>
+{% else %}
+<div class="flex flex-col items-center justify-center h-full text-gray-600 py-12">
+  <i class="fa-solid fa-comments text-4xl mb-3"></i>
+  <p class="text-sm">No messages yet — ask the agent anything!</p>
+  <div class="mt-4 space-y-2 text-xs text-gray-500 text-center max-w-sm">
+    <p class="bg-gray-800 rounded-lg px-3 py-2 hover:bg-gray-750 cursor-pointer">💬 "Explain what tools were generated"</p>
+    <p class="bg-gray-800 rounded-lg px-3 py-2 hover:bg-gray-750 cursor-pointer">⚡ "Add auth using Bearer token"</p>
+    <p class="bg-gray-800 rounded-lg px-3 py-2 hover:bg-gray-750 cursor-pointer">🔄 "Regenerate with better descriptions"</p>
+  </div>
+</div>
+{% endfor %}

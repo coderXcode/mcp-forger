@@ -1,0 +1,113 @@
+name: mcp-forge
+version: "1.0.0"
+description: >
+  Convert any application into an MCP server using AI.
+  Analyze APIs, generate FastMCP/Node.js/Go servers, run tests,
+  manage snapshots, and chat with the AI forge agent.
+author: MCP Forge
+homepage: https://github.com/your-org/mcp-forge
+
+# ── Requirements ──────────────────────────────────────────────────────────────
+requirements:
+  - python >= "3.12"
+  - cli: mcp-forge        # installs the `forge` command
+    install: "uv tool install mcp-forge"
+    alt: "pipx install mcp-forge"
+
+# ── Setup ─────────────────────────────────────────────────────────────────────
+setup:
+  steps:
+    - name: Start MCP Forge server
+      command: docker compose up -d
+      cwd: "."
+      description: Start the MCP Forge Docker stack (port 8000 dashboard, 8001 MCP)
+
+    - name: Connect CLI to server
+      command: forge connect --url http://localhost:8000 --token $FORGE_TOKEN
+      description: Save connection config to ~/.mcp-forge/config.json
+
+# ── Environment ───────────────────────────────────────────────────────────────
+env:
+  FORGE_TOKEN:
+    description: "MCP Forge auth token — run: docker exec mcp_forge_app printenv MCP_AUTH_TOKEN"
+    required: true
+  FORGE_URL:
+    description: "MCP Forge base URL"
+    default: "http://localhost:8000"
+
+# ── Skills (Codex commands) ────────────────────────────────────────────────────
+skills:
+  - name: discover
+    command: forge status
+    description: List all MCP Forge projects and their status
+    codex_trigger: "$forge discover"
+
+  - name: analyze
+    command: forge analyze {project_id}
+    description: Trigger analysis on a project — detects endpoints, schemas, auth
+    codex_trigger: "$forge analyze <project_id>"
+    args:
+      - name: project_id
+        type: integer
+        required: true
+
+  - name: generate
+    command: forge generate {project_id} --lang {language}
+    description: Generate MCP server code (Python FastMCP / Node.js / Go)
+    codex_trigger: "$forge generate <project_id> [--lang python_fastmcp|nodejs|go]"
+    args:
+      - name: project_id
+        type: integer
+        required: true
+      - name: language
+        type: string
+        default: python_fastmcp
+        choices: [python_fastmcp, nodejs, go, generic]
+
+  - name: chat
+    command: forge chat {project_id} "{message}"
+    description: Chat with the AI forge agent for a project
+    codex_trigger: "$forge chat <project_id> <message>"
+    args:
+      - name: project_id
+        type: integer
+        required: true
+      - name: message
+        type: string
+        required: true
+
+  - name: test
+    command: forge logs {project_id}
+    description: Show recent logs for a project
+    codex_trigger: "$forge logs <project_id>"
+    args:
+      - name: project_id
+        type: integer
+        required: true
+
+  - name: optimize
+    command: forge chat {project_id} "Review all endpoints, suggest improvements, and ask clarifying questions before regenerating"
+    description: Ask the AI agent to review and optimize the project — equivalent to evo:optimize
+    codex_trigger: "$forge optimize <project_id>"
+    args:
+      - name: project_id
+        type: integer
+        required: true
+
+# ── Install instructions ───────────────────────────────────────────────────────
+install:
+  codex: |
+    # Step 1 — Install the forge CLI globally
+    uv tool install mcp-forge
+    # or: pipx install mcp-forge
+    forge --version   # should print: mcp-forge x.x.x
+
+    # Step 2 — Add the plugin to Codex
+    codex marketplace add mcp-forge/mcp-forge
+
+    # Step 3 — Open Codex, run /plugins, find mcp-forge, install
+    # Skills become available as $forge discover, $forge generate etc.
+
+  claude_code: |
+    /plugin marketplace add mcp-forge/mcp-forge
+    # Reload Claude Code — /forge:discover and /forge:generate become available

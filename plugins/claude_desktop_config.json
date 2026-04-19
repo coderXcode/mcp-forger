@@ -1,0 +1,17 @@
+{
+  "_comment": "Copy this file to: %APPDATA%\\Claude\\claude_desktop_config.json (Windows) or ~/Library/Application Support/Claude/claude_desktop_config.json (Mac)",
+  "_comment2": "Option A — stdio (local Python, recommended for single-user dev)",
+  "mcpServers": {
+    "mcp-forge": {
+      "command": "python",
+      "args": ["mcp_server/server.py"],
+      "cwd": "B:/work/projects/claude_pugin_mcp",
+      "env": {
+        "PYTHONPATH": "B:/work/projects/claude_pugin_mcp",
+        "APP_URL": "http://localhost:8000",
+        "MCP_AUTH_TOKEN": "changeme",
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}

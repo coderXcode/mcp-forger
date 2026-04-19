@@ -1,0 +1,109 @@
+{% for run in runs %}
+<div class="bg-gray-800 rounded-xl border border-gray-700 p-5">
+  <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center
+        {% if run.status.value == 'passed' %}bg-green-900 text-green-400
+        {% elif run.status.value == 'failed' %}bg-red-900 text-red-400
+        {% elif run.status.value == 'running' %}bg-yellow-900 text-yellow-400
+        {% else %}bg-gray-700 text-gray-400{% endif %}">
+        {% if run.status.value == 'running' %}<i class="fa-solid fa-spinner fa-spin text-sm"></i>
+        {% elif run.status.value == 'passed' %}<i class="fa-solid fa-check text-sm"></i>
+        {% elif run.status.value == 'failed' %}<i class="fa-solid fa-xmark text-sm"></i>
+        {% else %}<i class="fa-solid fa-clock text-sm"></i>{% endif %}
+      </div>
+      <div>
+        <p class="text-sm font-semibold text-white">Test Run #{{ run.id }}</p>
+        <p class="text-xs text-gray-500">{{ run.created_at.strftime('%b %d, %Y %H:%M') }}</p>
+      </div>
+    </div>
+    <!-- Stats + toggle buttons -->
+    <div class="flex items-center gap-3">
+      {% if run.total > 0 %}
+      <div class="flex items-center gap-3">
+        <div class="text-right">
+          <p class="text-sm font-bold {% if run.failed > 0 %}text-red-400{% else %}text-green-400{% endif %}">
+            {{ run.passed }}/{{ run.total }}
+          </p>
+          <p class="text-xs text-gray-500">passed</p>
+        </div>
+        <div class="w-24 bg-gray-700 rounded-full h-2">
+          <div class="{% if run.failed > 0 %}bg-red-500{% else %}bg-green-500{% endif %} h-2 rounded-full"
+               style="width: {{ (run.passed / run.total * 100) | int }}%"></div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="flex gap-2">
+        {% if run.test_code %}
+        <button @click="openCode[{{ run.id }}] = !openCode[{{ run.id }}]"
+                :class="openCode[{{ run.id }}] ? 'bg-forge-700 text-forge-300' : 'bg-gray-700 text-gray-400 hover:text-gray-200'"
+                class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors">
+          <i class="fa-solid fa-code text-xs"></i>
+          <span x-text="openCode[{{ run.id }}] ? 'Hide Tests' : 'View Tests'"></span>
+        </button>
+        {% endif %}
+        {% if run.output %}
+        <button @click="openOutput[{{ run.id }}] = !openOutput[{{ run.id }}]"
+                :class="openOutput[{{ run.id }}] ? 'bg-gray-600 text-gray-200' : 'bg-gray-700 text-gray-400 hover:text-gray-200'"
+                class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors">
+          <i class="fa-solid fa-terminal text-xs"></i>
+          <span x-text="openOutput[{{ run.id }}] ? 'Hide Output' : 'pytest Output'"></span>
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Individual test results -->
+  {% if run.results %}
+  <div class="space-y-1 mt-3">
+    {% for result in run.results %}
+    <div class="flex items-center gap-2 text-xs py-1 border-t border-gray-700/50">
+      <span class="flex-shrink-0 {% if result.status == 'passed' %}text-green-400{% elif result.status == 'skipped' %}text-yellow-400{% else %}text-red-400{% endif %}">
+        <i class="fa-solid {% if result.status == 'passed' %}fa-check{% elif result.status == 'skipped' %}fa-minus{% else %}fa-xmark{% endif %}"></i>
+      </span>
+      <span class="text-gray-300 font-mono truncate flex-1">{{ result.name }}</span>
+      <span class="text-gray-600">{{ result.duration }}s</span>
+    </div>
+    {% if result.message %}
+    <div class="ml-5 text-xs text-red-400 font-mono bg-red-950/30 rounded p-2 mb-1 whitespace-pre-wrap">{{ result.message[:500] }}</div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% elif run.status.value not in ('running', 'pending') %}
+  <p class="text-xs text-gray-500 mt-2 border-t border-gray-700/50 pt-2">No individual test results recorded.</p>
+  {% endif %}
+
+  <!-- Test Code viewer -->
+  {% if run.test_code %}
+  <div x-show="openCode[{{ run.id }}]" class="mt-4 border-t border-gray-700 pt-4">
+    <div class="flex items-center justify-between mb-2">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+        <i class="fa-solid fa-file-code mr-1"></i> test_mcp_server.py
+      </p>
+      <button @click="navigator.clipboard.writeText($el.closest('[x-data]').querySelector('code').innerText); $dispatch('toast', {type:'success', message:'Copied!'})"
+              class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+        <i class="fa-solid fa-copy mr-1"></i>Copy
+      </button>
+    </div>
+    <pre class="bg-gray-900 rounded-lg p-4 overflow-x-auto text-xs leading-relaxed max-h-96 overflow-y-auto"><code class="language-python">{{ run.test_code | e }}</code></pre>
+  </div>
+  {% endif %}
+
+  <!-- pytest raw output -->
+  {% if run.output %}
+  <div x-show="openOutput[{{ run.id }}]" class="mt-4 border-t border-gray-700 pt-4">
+    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+      <i class="fa-solid fa-terminal mr-1"></i> pytest output
+    </p>
+    <pre class="bg-gray-900 rounded-lg p-4 overflow-x-auto text-xs text-gray-300 leading-relaxed max-h-64 overflow-y-auto font-mono whitespace-pre-wrap">{{ run.output | e }}</pre>
+  </div>
+  {% endif %}
+
+</div>
+{% else %}
+<div class="text-center py-12 text-gray-600">
+  <i class="fa-solid fa-flask-vial text-3xl mb-3 block"></i>
+  <p class="text-sm">No test runs yet. Click "Run Tests" to start.</p>
+</div>
+{% endfor %}

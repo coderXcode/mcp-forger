@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}New Project — MCP Forge{% endblock %}
+{% block page_title %}New Project{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto" x-data="newProject()">
+
+  <!-- Header -->
+  <div class="mb-6">
+    <a href="/" class="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors mb-4">
+      <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+    </a>
+    <h1 class="text-2xl font-bold text-white">Convert an App to MCP</h1>
+    <p class="text-gray-400 mt-1 text-sm">Point Forge at your source, pick a target, and let the AI agent handle the rest.</p>
+  </div>
+
+  <!-- Card -->
+  <div class="bg-gray-800 rounded-2xl border border-gray-700 p-8 space-y-6">
+
+    <!-- Error banner -->
+    <div x-show="error" x-cloak class="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3" x-text="error"></div>
+
+    <!-- Name + Description -->
+    <div class="grid grid-cols-1 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-300 mb-1.5">Project Name <span class="text-red-400">*</span></label>
+        <input x-model="form.name" type="text" placeholder="e.g. Stripe Payments API"
+               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-forge-500 focus:ring-1 focus:ring-forge-500" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-300 mb-1.5">Description <span class="text-gray-500 font-normal">(optional)</span></label>
+        <input x-model="form.description" type="text" placeholder="What does this app do?"
+               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-forge-500 focus:ring-1 focus:ring-forge-500" />
+      </div>
+    </div>
+
+    <!-- Source Type -->
+    <div>
+      <label class="block text-sm font-medium text-gray-300 mb-2">Source Type <span class="text-red-400">*</span></label>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <template x-for="opt in sourceOptions" :key="opt.value">
+          <button type="button"
+                  @click="form.source_type = opt.value"
+                  :class="form.source_type === opt.value
+                    ? 'border-forge-500 bg-forge-900/40 text-white'
+                    : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-white'"
+                  class="flex items-center gap-2 border rounded-lg px-3 py-2.5 text-sm transition-colors text-left">
+            <i :class="opt.icon + ' w-4 text-center'"></i>
+            <span x-text="opt.label"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <!-- Source URL / Path -->
+    <div x-show="form.source_type !== 'upload'">
+      <label class="block text-sm font-medium text-gray-300 mb-1.5" x-text="sourceLabel"></label>
+      <input x-model="form.source_url" type="text" :placeholder="sourcePlaceholder"
+             class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-forge-500 focus:ring-1 focus:ring-forge-500" />
+      <!-- local folder hint -->
+      <p x-show="form.source_type === 'local_folder'" x-cloak
+         class="mt-2 text-xs text-blue-400/80 flex items-start gap-1.5">
+        <i class="fa-solid fa-circle-info mt-0.5 flex-shrink-0"></i>
+        <span>Drop your folder into the <code class="bg-gray-700 px-1 rounded">mnt/</code> directory next to
+          <code class="bg-gray-700 px-1 rounded">docker-compose.yml</code>, then enter
+          <code class="bg-gray-700 px-1 rounded">/mnt/your-folder</code> as the path.
+          The volume is live-mounted — no restart needed.</span>
+      </p>
+    </div>
+
+    <!-- Docs URL (optional) -->
+    <div>
+      <label class="block text-sm font-medium text-gray-300 mb-1.5">
+        Documentation URL
+        <span class="text-gray-500 font-normal">(optional — helps the agent understand the app)</span>
+      </label>
+      <input x-model="form.docs_url" type="url" placeholder="https://docs.example.com"
+             class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-forge-500 focus:ring-1 focus:ring-forge-500" />
+    </div>
+
+    <!-- Target Language -->
+    <div>
+      <label class="block text-sm font-medium text-gray-300 mb-2">Target Language</label>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <template x-for="lang in langOptions" :key="lang.value">
+          <button type="button"
+                  @click="form.target_language = lang.value"
+                  :class="form.target_language === lang.value
+                    ? 'border-forge-500 bg-forge-900/40 text-white'
+                    : 'border-gray-600 text-gray-400 hover:border-gray-500 hover:text-white'"
+                  class="flex flex-col items-center gap-1 border rounded-lg px-3 py-3 text-sm transition-colors">
+            <i :class="lang.icon + ' text-lg'"></i>
+            <span x-text="lang.label" class="text-xs"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <button @click="submit()"
+            :disabled="loading"
+            class="w-full bg-forge-600 hover:bg-forge-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
+      <i x-show="!loading" class="fa-solid fa-bolt"></i>
+      <svg x-show="loading" x-cloak class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+      </svg>
+      <span x-text="loading ? 'Creating project…' : 'Start Conversion'"></span>
+    </button>
+  </div>
+</div>
+
+<script>
+function newProject() {
+  return {
+    loading: false,
+    error: '',
+    form: {
+      name: '',
+      description: '',
+      source_type: 'openapi',
+      source_url: '',
+      docs_url: '',
+      target_language: 'python_fastmcp',
+    },
+    sourceOptions: [
+      { value: 'openapi',      label: 'OpenAPI / Swagger', icon: 'fa-solid fa-file-code' },
+      { value: 'github',       label: 'GitHub Repo',       icon: 'fa-brands fa-github' },
+      { value: 'url',          label: 'Live URL (probe)',  icon: 'fa-solid fa-globe' },
+      { value: 'local_folder', label: 'Local Folder',      icon: 'fa-solid fa-folder-open' },
+      { value: 'upload',       label: 'Upload Files',      icon: 'fa-solid fa-upload' },
+      { value: 'manual',       label: 'Describe it',       icon: 'fa-solid fa-pen-to-square' },
+    ],
+    langOptions: [
+      { value: 'python_fastmcp', label: 'Python',   icon: 'fa-brands fa-python' },
+      { value: 'nodejs',         label: 'Node.js',  icon: 'fa-brands fa-node-js' },
+      { value: 'go',             label: 'Go',       icon: 'fa-solid fa-code' },
+      { value: 'generic',        label: 'Auto',     icon: 'fa-solid fa-wand-magic-sparkles' },
+    ],
+    get sourceLabel() {
+      const labels = {
+        openapi: 'OpenAPI Spec URL',
+        github: 'GitHub Repository URL',
+        url: 'Live App URL',
+        local_folder: 'Folder Path (inside container)',
+        manual: 'Describe your API',
+      };
+      return labels[this.form.source_type] || 'Source URL';
+    },
+    get sourcePlaceholder() {
+      const ph = {
+        openapi: 'https://api.example.com/openapi.json',
+        github: 'https://github.com/owner/repo',
+        url: 'https://api.example.com',
+        local_folder: '/mnt/my-api',
+        manual: 'This is a REST API that manages users and orders…',
+      };
+      return ph[this.form.source_type] || '';
+    },
+    async submit() {
+      this.error = '';
+      if (!this.form.name.trim()) { this.error = 'Project name is required.'; return; }
+      if (this.form.source_type !== 'upload' && this.form.source_type !== 'manual' && !this.form.source_url.trim()) {
+        this.error = 'Please provide a source URL or path.';
+        return;
+      }
+      this.loading = true;
+      try {
+        const body = { ...this.form };
+        if (!body.source_url) delete body.source_url;
+        if (!body.description) delete body.description;
+        // Store docs_url in description if provided (until a dedicated field exists)
+        if (body.docs_url) {
+          body.description = (body.description ? body.description + '\n' : '') + 'Docs: ' + body.docs_url;
+        }
+        delete body.docs_url;
+
+        const resp = await fetch('/api/projects/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.detail || `Server error ${resp.status}`);
+        }
+        const project = await resp.json();
+        window.location.href = `/projects/${project.id}`;
+      } catch (e) {
+        this.error = e.message || 'Unexpected error. Check logs.';
+        this.loading = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

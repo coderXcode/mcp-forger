@@ -1,0 +1,61 @@
+# Core framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+jinja2>=3.1.3
+aiofiles>=23.2.1
+websockets>=12.0
+sse-starlette>=2.1.0
+
+# MCP
+mcp[cli]>=1.0.0
+fastmcp>=2.0.0
+
+# Settings & config
+pydantic-settings>=2.2.0
+python-dotenv>=1.0.1
+
+# Database
+sqlmodel>=0.0.16
+aiosqlite>=0.20.0
+alembic>=1.13.0
+# asyncpg>=0.29.0  # Uncomment for PostgreSQL
+
+# HTTP client
+httpx>=0.27.0
+httpx-sse>=0.4.0
+
+# LLM providers
+google-genai>=1.0.0
+anthropic>=0.34.0
+openai>=1.40.0
+# Local HuggingFace model support (used when LLM_PROVIDER=local)
+transformers>=4.45.0
+accelerate>=0.34.0
+bitsandbytes>=0.43.0   # 4-bit quantisation — requires NVIDIA GPU in container
+# Code analysis & generation
+pyyaml>=6.0.1
+jsonschema>=4.23.0
+tree-sitter>=0.21.0
+
+# GitHub integration
+PyGithub>=2.3.0
+gitpython>=3.1.43
+
+# Security & crypto
+cryptography>=42.0.0
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
+
+# Testing
+pytest>=8.1.0
+pytest-asyncio>=0.23.0
+pytest-cov>=5.0.0
+pytest-json-report>=1.5.0
+pytest-timeout>=2.3.0
+
+# Utilities
+rich>=13.7.0
+typer>=0.12.0
+tenacity>=8.3.0
+python-slugify>=8.0.4

@@ -1,0 +1,10 @@
+# Drop your project folders here to use them with MCP Forge.
+#
+# Any folder you place here will be available inside the Docker container
+# at the path /mnt/<folder-name>
+#
+# Example:
+#   You drop:  mnt/my-api/
+#   Use this in the dashboard:  /mnt/my-api
+#
+# The contents of this directory are gitignored (except this file).
