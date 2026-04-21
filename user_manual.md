@@ -1,195 +1,232 @@
 # MCP Forge — User Manual
 
-> Connect MCP Forge to Claude Desktop, Claude Code, or Codex and let AI drive your entire API-to-MCP conversion workflow from natural language.
+> Complete guide to running MCP Forge and integrating it with Claude Desktop, Claude Code, Codex, and the `forge` CLI.
 
 ---
 
-## Requirements
+## Table of Contents
 
-| Tool | Version |
+1. [Run MCP Forge](#1-run-mcp-forge)
+2. [Connect to Claude Desktop](#2-connect-to-claude-desktop)
+3. [Connect to Claude Code](#3-connect-to-claude-code)
+4. [Connect to Codex](#4-connect-to-codex)
+5. [forge CLI](#5-forge-cli)
+6. [Using a Local Folder as Source](#6-using-a-local-folder-as-source)
+7. [Local HuggingFace Model (No API Key)](#7-local-huggingface-model-no-api-key)
+8. [Configuration Reference](#8-configuration-reference)
+9. [Resetting the Database](#9-resetting-the-database)
+10. [Troubleshooting](#10-troubleshooting)
+11. [Architecture](#11-architecture)
+
+---
+
+## 1. Run MCP Forge
+
+### Requirements
+
+| Tool | Notes |
 |---|---|
-| Docker + Docker Compose | v24+ |
-| NVIDIA GPU *(optional)* | Only needed for local LLM inference |
+| Docker + Docker Compose v24+ | Required |
+| NVIDIA GPU | Optional — only for `LLM_PROVIDER=local` |
+| Python 3.12+ | Optional — only for `forge` CLI or stdio plugin mode |
 
-No Python installation required unless you want the `forge` CLI.
-
----
-
-## Part 1 — Run MCP Forge
-
-### Step 1 — Get the code
+### Step 1 — Clone & configure
 
 ```bash
 git clone https://github.com/coderXcode/mcp-forge.git
-cd YOUR_REPO
-```
-
-### Step 2 — Configure
-
-```bash
+cd mcp-forge
 cp .env.example .env
 ```
 
-Open `.env` and fill in at least one LLM provider key:
+Open `.env` and set at minimum:
 
 ```env
-# Pick ONE provider — or use "local" for no API key (requires GPU)
-LLM_PROVIDER=gemini
-GEMINI_API_KEY=your-gemini-key-here
+LLM_PROVIDER=gemini          # or: anthropic | openai | local
+GEMINI_API_KEY=your-key-here
 
-# Change this to something secret — used to authenticate Claude/Codex
+# Change this — used to authenticate Claude Desktop / Claude Code / Codex
 MCP_AUTH_TOKEN=change-me-to-something-secret
 ```
 
-> **No GPU?** Use `LLM_PROVIDER=gemini` (free tier available at [aistudio.google.com](https://aistudio.google.com)) or `anthropic` / `openai`.
+> **No API key?** Use `LLM_PROVIDER=gemini` — Gemini has a free tier at [aistudio.google.com](https://aistudio.google.com).
 
-### Step 3 — Start
+### Step 2 — Start
 
 ```bash
 docker compose up -d
 ```
 
-| Service | URL |
-|---|---|
-| 🌐 Dashboard | http://localhost:8000 |
-| 🔌 MCP SSE endpoint | http://localhost:8001/sse |
+| Service | URL | Purpose |
+|---|---|---|
+| 🌐 Dashboard | http://localhost:8000 | Web UI — all operations |
+| 🔌 MCP SSE endpoint | http://localhost:8001/sse | Claude Desktop / Claude Code / Codex |
 
-### Step 4 — Verify
+### Step 3 — Verify
 
 ```bash
-# Should return a JSON list of projects (empty at first)
+# Should return [] (empty project list)
 curl http://localhost:8000/api/projects/
 
-# Should return: event: endpoint  (confirms MCP server is running)
+# Should emit: event: endpoint  (MCP server is up)
 curl http://localhost:8001/sse
 ```
 
 ---
 
-## Part 2 — Connect to Claude Desktop
+## 2. Connect to Claude Desktop
 
-> **One-command install** — the scripts below auto-detect your token from Docker and write the config file in the right place. No manual editing required.
+Claude Desktop runs the MCP server locally via **stdio** transport. The install scripts handle everything automatically.
 
----
+### 🪟 Windows
 
-### 🪟 Windows — run the installer script
-
-Open **PowerShell** in the project folder and run:
+Open **PowerShell** in the project folder:
 
 ```powershell
 .\scripts\install_claude_plugin.ps1
 ```
 
-That's it. The script will:
-1. ✅ Check Docker + `mcp_forge_app` is running
-2. ✅ Pull `MCP_AUTH_TOKEN` directly from the container
-3. ✅ Create `%APPDATA%\Claude\` if it doesn't exist
-4. ✅ Write `claude_desktop_config.json` with the correct token
-5. ✅ Print exactly what to do next
+### 🍎 macOS / 🐧 Linux
 
----
-
-### 🍎 macOS / Linux — run the installer script
-
-Open **Terminal** in the project folder and run:
+Open **Terminal** in the project folder:
 
 ```bash
 bash scripts/install_claude_plugin.sh
 ```
 
-The script will:
-1. ✅ Check Docker is running
-2. ✅ Check `mcp_forge_app` container is up
-3. ✅ Pull `MCP_AUTH_TOKEN` directly from the container
-4. ✅ Write config to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `~/.config/Claude/` (Linux)
-5. ✅ Warn you if Claude Desktop isn't installed yet
+Both scripts automatically:
+1. Check Docker + `mcp_forge_app` is running
+2. Pull `MCP_AUTH_TOKEN` from the container
+3. Create the Claude config folder if it doesn't exist
+4. Write `claude_desktop_config.json` with the correct path and token
 
-> **Mac:** Claude Desktop must be installed first. Download it from **[claude.ai/download](https://claude.ai/download)**. Install it like any other `.dmg` app, then run the script.
-
----
-
-### After running the script
-
-1. **Fully QUIT Claude Desktop** — right-click the icon in the system tray / menu bar → **Quit** (just closing the window is not enough)
-2. **Reopen Claude Desktop**
-3. Go to **Settings** (gear icon) → **Developer**
-4. You should see **mcp-forge** listed with a 🟢 **green dot**
-5. Test it — ask Claude: *"List all my MCP Forge projects"*
-
----
-
-### Manual install (if you prefer not to use the script)
-
-<details>
-<summary>Click to expand manual steps</summary>
-
-**Get your token:**
-```powershell
-docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
-```
-
-**Config file location:**
+Config file locations:
 
 | OS | Path |
 |---|---|
-| Windows | `C:\Users\<YourName>\AppData\Roaming\Claude\claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
 
-**Paste this into the file** (replace `YOUR_TOKEN_HERE`):
+### After running the script
+
+1. **Fully QUIT Claude Desktop** — right-click system tray / menu bar → **Quit** (just closing the window is not enough)
+2. **Reopen Claude Desktop**
+3. Go to **Settings → Developer** — you should see **mcp-forge** with a 🟢 green dot
+4. Test it: *"List all my MCP Forge projects"*
+
+### Manual config (stdio mode)
+
+If you prefer to write the file yourself, get your token first:
+
+```bash
+docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
+```
+
+Then create the config file at the path for your OS (see table above):
 
 ```json
 {
   "mcpServers": {
     "mcp-forge": {
-      "url": "http://localhost:8001/sse",
-      "headers": {
-        "X-MCP-Token": "YOUR_TOKEN_HERE"
+      "command": "C:/path/to/mcp-forge/.venv/Scripts/python.exe",
+      "args": ["mcp_server/server.py"],
+      "cwd": "C:/path/to/mcp-forge",
+      "env": {
+        "APP_URL": "http://localhost:8000",
+        "MCP_AUTH_TOKEN": "YOUR_TOKEN_HERE"
       }
     }
   }
 }
 ```
 
-Fully quit and reopen Claude Desktop.
+> Replace `C:/path/to/mcp-forge` with the actual path to the repo on your machine.  
+> On macOS/Linux use `.venv/bin/python` instead of `.venv/Scripts/python.exe`.
 
-</details>
+### Via Claude Desktop Connectors UI (newer versions)
 
----
-
-### Via Claude Desktop UI (Connectors) — newer versions only
-
-On newer Claude Desktop versions with a **Customize** screen:
+Some newer Claude Desktop builds have a **Customize → Connectors** screen:
 
 1. Click **Customize** in the left sidebar → **Connectors** → **`+`**
 2. Fill in: **Name** = `mcp-forge`, **URL** = `http://localhost:8001/sse`, **Header** = `X-MCP-Token` / *(your token)*
 3. Save → fully restart Claude Desktop
 
-> ⚠️ If there is no URL field (only OAuth), use the script method above instead.
+> ⚠️ If there is no URL field (only OAuth options), use the script method above.
+
+### Changing the token later
+
+Edit `MCP_AUTH_TOKEN=` in `.env`, run `docker compose restart`, then re-run the install script.
 
 ---
 
-> To change the token later: edit `MCP_AUTH_TOKEN=` in `.env`, run `docker compose restart`, then re-run the install script.
+### What you can ask Claude Desktop
+
+```
+Create a new MCP Forge project called "petstore" from
+https://petstore3.swagger.io/api/v3/openapi.json
+```
+```
+Analyze project 1 and tell me what endpoints were found
+```
+```
+Generate the MCP server for project 1 in Python FastMCP
+```
+```
+Run tests for project 1 and show me the results
+```
+```
+Show me the generated code for project 1
+```
+```
+Do I have any unread notifications in MCP Forge?
+```
+```
+Chat with the forge agent for project 1:
+"Review all endpoints and ask me anything unclear before generating"
+```
+
+### Available MCP tools
+
+| Tool | What it does |
+|---|---|
+| `create_project` | Create a project and auto-start analysis |
+| `list_projects` | List all projects with status |
+| `analyze_source` | Trigger / re-trigger source analysis |
+| `generate_mcp` | Generate the MCP server code |
+| `get_generated_code` | Read generated files |
+| `get_project_status` | Poll project status (with built-in long-poll) |
+| `run_tests` | Run AI-generated tests |
+| `get_test_results` | Latest pass/fail counts |
+| `list_snapshots` | All versioned snapshots |
+| `rollback_snapshot` | Restore a previous snapshot |
+| `chat_with_agent` | Talk to the AI forge agent |
+| `get_notifications` | Bell notifications (questions, errors) |
+| `get_clarifications` | List pending clarification questions |
+| `answer_clarification` | Answer a clarification question |
+| `validate_generated_code` | Security + structure audit |
 
 ---
 
-## Part 3 — Connect to Claude Code (VS Code)
+## 3. Connect to Claude Code Terminal
 
-Two ways to install — pick one:
+### Option A — Marketplace install (recommended)
 
-**Option A — Marketplace install (recommended):**
+In Claude Code Terminal, run:
 
-In Claude Code, run these two commands:
 ```
 /plugin marketplace add coderXcode/mcp-forge
 /plugin install mcp-forge@coderXcode-mcp-forge
 ```
-Reload Claude Code. Skills are available immediately — no cloning or env vars needed.
 
-**Option B — Auto-detected from repo root:**
+Reload Claude Code. Skills are available immediately — no cloning or environment variables needed.
 
-If you have the repo cloned and open in Claude Code, `.mcp.json` at the root is picked up automatically.
+> This installs the plugin from the Claude Code marketplace using the `coderXcode/mcp-forge` package identifier. Claude Code fetches the plugin manifest and registers all forge skills automatically.
 
-Set your token as an environment variable:
+### Option B — Auto-detected from repo root
+
+If you have this repo cloned and open in Claude Code, the `.mcp.json` file at the root is picked up automatically.
+
+Set your token as an environment variable before launching VS Code:
 
 ```powershell
 # Windows PowerShell
@@ -199,28 +236,27 @@ $env:FORGE_TOKEN = "your-token-here"
 export FORGE_TOKEN=your-token-here
 ```
 
-Then use skills directly in Claude Code:
+### Skills available in Claude Code
 
 ```
-/forge:analyze <project_id>
-/forge:generate <project_id>
-/forge:chat <project_id> <message>
-/forge:status
-/forge:test <project_id>
-/forge:rollback <project_id> <version>
+/forge:analyze <project_id>          # trigger analysis
+/forge:generate <project_id>         # generate MCP server
+/forge:chat <project_id> <message>   # chat with AI agent
+/forge:status                        # list all projects
+/forge:test <project_id>             # run tests
+/forge:rollback <project_id> <ver>   # rollback to snapshot
 ```
 
 ---
 
-## Part 4 — Connect to Codex
+## 4. Connect to Codex
 
 ```bash
 # Install the forge CLI
 pip install mcp-forge
 # or: pipx install mcp-forge
-# or: pip install git+https://github.com/coderXcode/mcp-forge.git
 
-# Add the plugin
+# Add the plugin to Codex
 codex marketplace add mcp-forge/mcp-forge
 ```
 
@@ -235,117 +271,202 @@ $forge chat 1 "message"  # chat with AI agent
 
 ---
 
-## Part 5 — What You Can Do
+## 5. forge CLI
 
-### Ask Claude anything like:
+A `forge` command-line tool is included for terminal-based workflows.
 
-```
-Create a new MCP Forge project called "petstore" from
-https://petstore3.swagger.io/api/v3/openapi.json
-```
-```
-Analyze project 1 and tell me what endpoints were found
-```
-```
-Generate the MCP server for project 1 in Python FastMCP
-```
-```
-Show me the generated code for project 1
-```
-```
-Run tests for project 1
-```
-```
-Do I have any unread notifications in MCP Forge?
-```
-```
-Chat with the forge agent for project 1:
-"Review all endpoints and ask me anything unclear before generating"
+### Install
+
+```bash
+# From this repo (works immediately — no PyPI needed)
+pip install -e .
+
+# From GitHub
+pip install git+https://github.com/coderXcode/mcp-forge.git
+
+# From PyPI
+pip install mcp-forge
 ```
 
-### All available tools
+### Commands
 
-| Tool | What it does |
-|---|---|
-| `create_project` | Create project + auto-start analysis |
-| `list_projects` | All projects with status |
-| `analyze_source` | Trigger / re-trigger analysis |
-| `generate_mcp` | Generate MCP server code |
-| `get_generated_code` | Read generated files |
-| `run_tests` | Run AI-generated tests |
-| `get_test_results` | Latest pass/fail counts |
-| `list_snapshots` | All versioned snapshots |
-| `rollback_snapshot` | Restore a snapshot |
-| `chat_with_agent` | Talk to the AI forge agent |
-| `get_notifications` | Bell notifications (questions, errors) |
-| `validate_generated_code` | Security + structure audit |
+```bash
+forge connect --url http://localhost:8000 --token <token>  # save connection
+forge status                                                # list all projects
+forge analyze 1                                             # trigger analysis
+forge generate 1 --lang python_fastmcp                     # generate MCP server
+forge chat 1 "add rate limiting to all tools"              # chat with agent
+forge logs 1 --tail 50                                      # coloured log tail
+forge plugin install                                        # write claude_desktop_config.json
+forge plugin status                                         # verify config
+```
 
 ---
 
-## Troubleshooting
+## 6. Using a Local Folder as Source
 
-### mcp-forge not showing in Claude Desktop / red dot
+The `mnt/` folder next to `docker-compose.yml` is live-mounted into the container at `/mnt/`. Drop any project folder there and point MCP Forge at it — no Docker restart needed.
 
-- **Fully quit** Claude Desktop (system tray → Quit, not just close)
-- Verify the `Claude` config folder exists (see paths above)
-- Validate your JSON at [jsonlint.com](https://jsonlint.com) — a missing comma breaks it
-- Make sure Docker is still running: `docker ps`
+```
+mcp-forge/
+└── mnt/
+    └── my-api/          ← copy your project folder here
+        ├── src/
+        └── package.json
+```
+
+In the dashboard or via Claude: set **Source type** = `local_folder`, **Source path** = `/mnt/my-api`.
+
+When using Claude Desktop, tell Claude: *"My project is in the mnt/ folder as 'my-api', source type local_folder, path /mnt/my-api"*.
+
+> The `mnt/` folder contents are gitignored — your code won't be committed.
+
+---
+
+## 7. Local HuggingFace Model (No API Key)
+
+Run entirely offline with a local model. Requires an NVIDIA GPU.
+
+### Requirements
+
+- NVIDIA GPU with ≥8 GB VRAM
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+
+### Setup
+
+```env
+LLM_PROVIDER=local
+LOCAL_MODEL=Qwen/Qwen2.5-Coder-14B-Instruct
+LOCAL_MODEL_DEVICE=auto
+LOCAL_MODEL_LOAD_IN_4BIT=true
+```
+
+Rebuild once (installs `transformers`, `accelerate`, `bitsandbytes`):
+
+```bash
+docker compose down && docker compose build && docker compose up -d
+```
+
+The model downloads from HuggingFace on first use (~8 GB) and is cached for future runs.
+
+| Model | VRAM (4-bit) | Quality |
+|---|---|---|
+| `Qwen/Qwen2.5-Coder-7B-Instruct` | ~4 GB | Good |
+| `Qwen/Qwen2.5-Coder-14B-Instruct` | ~8 GB | **Recommended** |
+| `deepseek-ai/deepseek-coder-v2-lite-instruct` | ~8 GB | Very good |
+| `Qwen/Qwen2.5-Coder-32B-Instruct` | ~18 GB | Best |
+
+---
+
+## 8. Configuration Reference
+
+All settings live in `.env`. They can also be edited live from the **Config** page in the dashboard.
+
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_PROVIDER` | `gemini` | `gemini` \| `anthropic` \| `openai` \| `local` |
+| `GEMINI_API_KEY` | — | Google Gemini API key |
+| `ANTHROPIC_API_KEY` | — | Anthropic Claude API key |
+| `OPENAI_API_KEY` | — | OpenAI API key |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model name |
+| `ANTHROPIC_MODEL` | `claude-3-5-sonnet-20241022` | Anthropic model name |
+| `OPENAI_MODEL` | `gpt-4o` | OpenAI model name |
+| `LOCAL_MODEL` | `Qwen/Qwen2.5-Coder-14B-Instruct` | HuggingFace model ID |
+| `LOCAL_MODEL_DEVICE` | `auto` | `auto` \| `cuda` \| `cpu` |
+| `LOCAL_MODEL_LOAD_IN_4BIT` | `true` | 4-bit NF4 quantization (requires NVIDIA GPU) |
+| `GITHUB_TOKEN` | — | PAT for private GitHub repo ingestion |
+| `DB_URL` | `sqlite:///./data/mcp_forge.db` | SQLite (default) or PostgreSQL URL |
+| `MCP_AUTH_TOKEN` | `change-me-mcp-secret` | Auth token for Claude / Codex — **change this** |
+| `MCP_SERVER_PORT` | `8001` | MCP SSE server port |
+| `OUTPUT_DIR` | `./generated` | Where generated MCP files are written |
+| `ENABLE_GIT_SNAPSHOTS` | `false` | Auto-commit each snapshot to a local git repo |
+| `ENABLE_LIVE_PROBING` | `true` | Allow live URL probing during analysis |
+| `ENABLE_SECURITY_AUDIT` | `true` | Scan generated code for security issues |
+| `SECRET_KEY` | auto | FastAPI session secret |
+| `DEBUG` | `false` | Enable uvicorn reload and verbose logs |
+
+---
+
+## 9. Resetting the Database
+
+```bash
+# Clear all rows (schema preserved)
+echo y | docker exec -i mcp_forge_app python clear_db.py
+
+# Full reset including volumes
+docker compose down -v && docker compose up -d
+```
+
+---
+
+## 10. Troubleshooting
+
+### mcp-forge not showing in Claude Desktop (red dot or missing)
+
+- **Fully quit** Claude Desktop — system tray / menu bar → **Quit** (not just close the window)
+- Re-run the install script: `.\scripts\install_claude_plugin.ps1`
+- Check the config file was written: open it and validate the JSON at [jsonlint.com](https://jsonlint.com)
+- Make sure Docker is running: `docker ps`
 
 ### "Connection refused" on port 8001
 
 ```bash
-docker ps                             # confirm mcp_forge_mcp is Up
-docker logs mcp_forge_mcp --tail 30   # check for startup errors
-docker compose up -d                  # restart if needed
+docker ps                              # confirm mcp_forge_mcp is Up
+docker logs mcp_forge_mcp --tail 30    # check for startup errors
+docker compose up -d                   # restart if needed
 ```
 
 ### Wrong or expired auth token
 
 ```bash
+# Get the current token
 docker exec mcp_forge_app printenv MCP_AUTH_TOKEN
-# Copy this value and update your claude_desktop_config.json
+
+# Re-run the install script to update claude_desktop_config.json automatically
+.\scripts\install_claude_plugin.ps1
 ```
 
 ### `url:` field not supported in your Claude Desktop version
 
-Use **stdio mode** — replace the config file contents with:
+Use **stdio mode** — the install script already writes this format. For manual config:
 
 ```json
 {
   "mcpServers": {
     "mcp-forge": {
-      "command": "python",
+      "command": "C:/path/to/mcp-forge/.venv/Scripts/python.exe",
       "args": ["mcp_server/server.py"],
-      "cwd": "C:/path/to/YOUR_REPO",
+      "cwd": "C:/path/to/mcp-forge",
       "env": {
-        "PYTHONPATH": "C:/path/to/YOUR_REPO",
         "APP_URL": "http://localhost:8000",
-        "MCP_AUTH_TOKEN": "YOUR_TOKEN_HERE",
-        "MCP_TRANSPORT": "stdio"
+        "MCP_AUTH_TOKEN": "YOUR_TOKEN_HERE"
       }
     }
   }
 }
 ```
 
-> Requires Python 3.12+ and: `pip install fastmcp httpx sqlmodel pydantic-settings`
+### Tests stuck on "running" with 0/0 results
+
+The test container may still be spinning up. Wait ~30 seconds and click **Run Tests** again from the dashboard Tests tab.
 
 ---
 
-## Architecture (for the curious)
+## 11. Architecture
 
 ```
 Claude Desktop / Claude Code / Codex
         │
-        │  stdio  OR  SSE (http://localhost:8001/sse)
+        │  stdio  (Claude Desktop)
+        │  SSE http://localhost:8001/sse  (Claude Code / Codex)
         ▼
- mcp_server/server.py      ←  FastMCP  ·  11 tools  ·  2 resources
+ mcp_server/server.py     ←  FastMCP  ·  15 tools
         │
         │  httpx REST  (X-MCP-Token header)
         ▼
- http://localhost:8000      ←  MCP Forge  ·  FastAPI
+ http://localhost:8000     ←  MCP Forge  ·  FastAPI
         │
-        ├── SQLite (projects, snapshots, chat, tests, notifications)
-        ├── LLM  (Gemini / Anthropic / OpenAI / Local Qwen NF4)
+        ├── SQLite  (projects · snapshots · chat · tests · notifications)
+        ├── LLM     (Gemini / Anthropic / OpenAI / Local Qwen NF4)
         └── ./generated/   ←  output MCP server files
 ```
