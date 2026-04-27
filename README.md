@@ -5,6 +5,12 @@
 <h1 align="center">🔨 MCP Forger</h1>
 
 <p align="center">
+  # MCP Forge
+
+  ## Your software becomes an AI coworker.
+
+  MCP Forge turns any app, API, repo, or codebase into an AI coworker that Claude, Codex, and other MCP clients can use directly. 
+  Give it your backend. It analyzes it, generates an MCP server, tests it, and lets Claude operate your software through natural language.
   Convert <strong>any application</strong> into an MCP (Model Context Protocol) server — with AI assistance.
 </p>
 
@@ -16,11 +22,7 @@
   <img src="https://img.shields.io/pypi/v/mcp-forger?label=pypi" />
 </p>
 
----
 
-MCP Forger turns any app, API, or codebase into an AI coworker that Claude, Codex, and other AI clients can use directly. It is a self-hosted AI agent that analyzes your existing app (via OpenAPI spec, GitHub repo, live URL, or local code) and generates a production-ready MCP server that **Claude Desktop, Claude Code**, or any MCP client can use directly.
-
----
 
 ## ✨ Features
 
