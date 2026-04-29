@@ -69,6 +69,32 @@ def _client() -> httpx.Client:
     return httpx.Client(base_url=_get_base_url(), headers=headers, timeout=30)
 
 
+def _get_mcp_port() -> int:
+    """Resolve MCP_SERVER_PORT: .env file → live API → default 8001."""
+    # 1. Read from .env in the saved project_dir (or cwd as fallback)
+    cfg = _load_config()
+    project_dir = cfg.get("project_dir") or str(Path.cwd())
+    env_file = Path(project_dir) / ".env"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("MCP_SERVER_PORT") and "=" in line:
+                try:
+                    return int(line.split("=", 1)[1].strip().split()[0])
+                except (ValueError, IndexError):
+                    pass
+    # 2. Query the live API
+    try:
+        with _client() as c:
+            resp = c.get("/api/config/")
+            if resp.status_code == 200:
+                return int(resp.json().get("vars", {}).get("MCP_SERVER_PORT", 8001))
+    except Exception:
+        pass
+    # 3. Hardcoded default
+    return 8001
+
+
 # ── Commands ───────────────────────────────────────────────────────────────────
 
 @app.command()
@@ -86,7 +112,7 @@ def connect(
         console.print(f"[red]✗ Connection failed:[/red] {e}")
         raise typer.Exit(1)
 
-    _save_config({"url": url, "token": token})
+    _save_config({"url": url, "token": token, "project_dir": str(Path.cwd())})
     console.print(f"[green]✓ Connected![/green] Config saved to {_CONFIG_FILE}")
     console.print(f"  Projects found: {len(r.json())}")
 
@@ -215,14 +241,20 @@ def logs(
 @app.command()
 def plugin(
     action: str = typer.Argument(..., help="install | uninstall | status"),
-    mode: str = typer.Option("sse", "--mode", "-m", help="sse | stdio"),
+    mode: str = typer.Option(None, "--mode", "-m", help="docker (default) | sse | stdio"),
 ):
     """Install or remove the Claude Desktop plugin config."""
     import platform
-    if platform.system() == "Windows":
+    is_windows = platform.system() == "Windows"
+    if is_windows:
         claude_dir = Path(os.environ["APPDATA"]) / "Claude"
     else:
         claude_dir = Path.home() / "Library" / "Application Support" / "Claude"
+
+    # Default: docker on macOS/Linux (SSE url format not supported there),
+    #          sse on Windows where it works fine
+    if mode is None:
+        mode = "sse" if is_windows else "docker"
 
     config_path = claude_dir / "claude_desktop_config.json"
 
@@ -243,10 +275,32 @@ def plugin(
         if not token:
             token = typer.prompt("MCP Auth Token (from docker exec mcp_forge_app printenv MCP_AUTH_TOKEN)")
 
+        from urllib.parse import urlparse
+        mcp_port = _get_mcp_port()
+        parsed = urlparse(_get_base_url())
+        app_url = f"{parsed.scheme}://{parsed.hostname}:{parsed.port or 8000}"
+        console.print(f"[dim]Using MCP_SERVER_PORT={mcp_port}[/dim]")
+
         if mode == "sse":
+            mcp_host = f"{parsed.scheme}://{parsed.hostname}"
             server_cfg = {
-                "url": "http://localhost:8001/sse",
+                "url": f"{mcp_host}:{mcp_port}/sse",
                 "headers": {"X-MCP-Token": token}
+            }
+        elif mode == "docker":
+            # Run mcp_server/server.py inside the already-running Docker container.
+            # Works on macOS/Linux where Claude Desktop doesn't support the SSE url format.
+            server_cfg = {
+                "command": "docker",
+                "args": [
+                    "exec", "-i", "mcp_forge_app",
+                    "python", "mcp_server/server.py"
+                ],
+                "env": {
+                    "APP_URL": app_url,
+                    "MCP_AUTH_TOKEN": token,
+                    "MCP_TRANSPORT": "stdio",
+                }
             }
         else:
             cwd = str(Path(__file__).parent.parent)
@@ -268,7 +322,7 @@ def plugin(
         existing.setdefault("mcpServers", {})["mcp-forge"] = server_cfg
         config_path.write_text(json.dumps(existing, indent=2))
 
-        console.print(f"[green]✓ Plugin installed![/green] Config written to:")
+        console.print(f"[green]✓ Plugin installed![/green] [{mode} mode] Config written to:")
         console.print(f"  {config_path}")
         console.print(f"\n[bold]Next step:[/bold] Fully quit and reopen Claude Desktop.")
         console.print(f"Then go to [bold]Settings → Developer[/bold] to verify mcp-forge is listed.")

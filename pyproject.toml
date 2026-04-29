@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-forger"
-version = "1.0.1"
+version = "1.0.2"
 description = "Convert any application into an MCP server — with AI assistance. CLI + Claude Desktop plugin."
 readme = "README.md"
 license = { text = "MIT" }

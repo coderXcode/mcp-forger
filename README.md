@@ -76,7 +76,31 @@ MCP_AUTH_TOKEN=change-me-to-something-secret
 
 > **Free option:** Gemini has a free tier at [aistudio.google.com](https://aistudio.google.com) — no credit card needed.
 
-### 1.2 — Start
+### 1.2 — macOS / Linux — disable the NVIDIA GPU block first
+
+> **Skip this if you are on Windows with an NVIDIA GPU.**
+
+The default `docker-compose.yml` includes an NVIDIA GPU reservation that causes Docker to fail on macOS (and any machine without an NVIDIA GPU). Open `docker-compose.yml` and comment out the `deploy:` block under the `app:` service:
+
+```yaml
+    # ── GPU (NVIDIA) — uncomment if on Linux with NVIDIA GPU ────────────────
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+```
+
+It should already be commented out if you cloned the latest version. If you see it **uncommented**, add `#` in front of each of those lines.
+
+> If you also want to change the MCP server port (e.g. port 8001 is already in use), edit `MCP_SERVER_PORT` in `.env` before starting:
+> ```env
+> MCP_SERVER_PORT=8002   # change to any free port
+> ```
+
+### 1.3 — Start
 
 ```bash
 docker compose up -d
@@ -85,9 +109,9 @@ docker compose up -d
 | Service | URL | Purpose |
 |---|---|---|
 | 🌐 Dashboard | http://localhost:8000 | Web UI — full visual workflow |
-| 🔌 MCP endpoint | http://localhost:8001/sse | Used by Claude Desktop / Claude Code |
+| 🔌 MCP endpoint | http://localhost:8001/sse | Used by Claude Desktop / Claude Code (default port) |
 
-### 1.3 — Verify it's running
+### 1.4 — Verify it's running
 
 ```bash
 # Should return [] (empty list — that's fine)

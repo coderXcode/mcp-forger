@@ -25,14 +25,14 @@ services:
       --reload
     depends_on:
       - redis
-    # ── GPU (NVIDIA) — comment out if no GPU or on Mac ──────────────────────
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    # ── GPU (NVIDIA) — uncomment if on Linux with NVIDIA GPU ────────────────
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
