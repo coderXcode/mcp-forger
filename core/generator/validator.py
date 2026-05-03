@@ -57,8 +57,8 @@ class MCPValidator:
                 result.valid = False
 
         # Warnings
-        if "@mcp.tool()" not in code and "@mcp.resource(" not in code:
-            result.warnings.append("No tools or resources defined — the MCP server will be empty")
+        if "@mcp.tool()" not in code:
+            result.warnings.append("No tools defined — the MCP server will be empty")
 
         if "httpx" not in code and "requests" not in code and "aiohttp" not in code:
             result.warnings.append("No HTTP client imported — tools may not be calling the API")

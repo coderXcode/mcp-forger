@@ -1,0 +1,118 @@
+# ── {{ project_name }} — One-command Claude Desktop setup (Windows PowerShell) ─
+# Usage:
+#   .\configure_claude.ps1                          # reads BASE_URL from .env
+#   .\configure_claude.ps1 -BaseUrl http://...      # explicit override
+#
+# What this does:
+#   1. Creates a Python virtual environment (.venv)
+#   2. Installs dependencies from requirements.txt
+#   3. Writes an mcpServers entry into Claude Desktop's config file
+#   4. Tells you to restart Claude Desktop
+# ─────────────────────────────────────────────────────────────────────────────
+param(
+    [string]$BaseUrl = ""
+)
+
+$ErrorActionPreference = "Stop"
+$ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectName = "{{ project_slug }}"
+
+# ── Load BASE_URL from .env if not passed ────────────────────────────────────
+if (-not $BaseUrl -and (Test-Path "$ScriptDir\.env")) {
+    $envLine = Get-Content "$ScriptDir\.env" | Where-Object { $_ -match '^BASE_URL=' } | Select-Object -First 1
+    if ($envLine) {
+        $BaseUrl = ($envLine -replace '^BASE_URL=', '').Trim()
+    }
+}
+
+# ── Interactive prompt if still empty ────────────────────────────────────────
+if (-not $BaseUrl) {
+    $BaseUrl = Read-Host "Enter the base URL of your running API [http://localhost:8000]"
+    if (-not $BaseUrl) { $BaseUrl = "http://localhost:8000" }
+}
+
+Write-Host ""
+Write-Host "╔══════════════════════════════════════════════════════╗"
+Write-Host "║  Setting up {{ project_name }} MCP server for Claude Desktop  ║"
+Write-Host "╚══════════════════════════════════════════════════════╝"
+Write-Host ""
+Write-Host "  Project : $ProjectName"
+Write-Host "  Base URL: $BaseUrl"
+Write-Host ""
+
+# ── Step 1: Create virtual environment ───────────────────────────────────────
+if (-not (Test-Path "$ScriptDir\.venv")) {
+    Write-Host "▶ Creating virtual environment..."
+    python -m venv "$ScriptDir\.venv"
+} else {
+    Write-Host "✓ Virtual environment already exists"
+}
+
+# ── Step 2: Install dependencies ─────────────────────────────────────────────
+Write-Host "▶ Installing dependencies..."
+& "$ScriptDir\.venv\Scripts\pip.exe" install --quiet --upgrade pip
+& "$ScriptDir\.venv\Scripts\pip.exe" install --quiet -r "$ScriptDir\requirements.txt"
+Write-Host "✓ Dependencies installed"
+
+# ── Step 3: Find entrypoint ──────────────────────────────────────────────────
+$Entrypoint = $null
+foreach ($candidate in @("main.py", "server.py", "app.py")) {
+    if (Test-Path "$ScriptDir\$candidate") {
+        $Entrypoint = "$ScriptDir\$candidate"
+        break
+    }
+}
+if (-not $Entrypoint) {
+    Write-Error "Could not find main.py / server.py / app.py in $ScriptDir"
+    exit 1
+}
+
+$PythonBin = "$ScriptDir\.venv\Scripts\python.exe"
+
+# ── Step 4: Detect Claude Desktop config path ────────────────────────────────
+$ClaudeDir    = "$env:APPDATA\Claude"
+$ClaudeConfig = "$ClaudeDir\claude_desktop_config.json"
+if (-not (Test-Path $ClaudeDir)) {
+    New-Item -ItemType Directory -Path $ClaudeDir | Out-Null
+}
+
+# ── Step 5: Merge mcpServers entry using Python (reliable JSON handling) ──────
+Write-Host "▶ Writing Claude Desktop config..."
+$PyScript = @"
+import json
+
+config_path = r'$ClaudeConfig'
+entry = {
+    'command': r'$PythonBin',
+    'args': [r'$Entrypoint'],
+    'env': {
+        'BASE_URL': '$BaseUrl',
+        'MCP_TRANSPORT': 'stdio'
+    }
+}
+
+try:
+    with open(config_path) as f:
+        config = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    config = {}
+
+config.setdefault('mcpServers', {})
+config['mcpServers']['$ProjectName'] = entry
+
+with open(config_path, 'w') as f:
+    json.dump(config, f, indent=2)
+
+print(f"  Written '{ProjectName}' entry to {config_path}")
+"@
+
+& $PythonBin -c $PyScript
+
+# ── Done ──────────────────────────────────────────────────────────────────────
+Write-Host ""
+Write-Host "✅  {{ project_name }} is registered in Claude Desktop."
+Write-Host ""
+Write-Host "  ⚠  Make sure your API is running at: $BaseUrl"
+Write-Host "  🔄  Fully quit Claude Desktop (system tray → Quit), then reopen it."
+Write-Host "  🟢  Go to Settings > Developer — you should see '$ProjectName' with a green dot."
+Write-Host ""

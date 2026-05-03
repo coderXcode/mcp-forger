@@ -11,21 +11,133 @@ pip install mcp-forger   # install the forge CLI
 
 ## Table of Contents
 
-1. [Connect to Claude Desktop — Manual Config](#1-connect-to-claude-desktop--manual-config)
-2. [Connect to Claude Code](#2-connect-to-claude-code)
-3. [Connect to Codex](#3-connect-to-codex)
-4. [Using a Local Folder as Source](#4-using-a-local-folder-as-source)
-5. [Local HuggingFace Model (No API Key)](#5-local-huggingface-model-no-api-key)
-6. [Full Configuration Reference](#6-full-configuration-reference)
-7. [Resetting the Database](#7-resetting-the-database)
-8. [Available MCP Tools](#8-available-mcp-tools)
-9. [Architecture](#9-architecture)
+1. [Generated Project: One-Command Claude Desktop Setup](#1-generated-project-one-command-claude-desktop-setup)
+2. [Connect MCP Forge itself to Claude Desktop (Manual Config)](#2-connect-mcp-forge-itself-to-claude-desktop-manual-config)
+3. [Connect to Claude Code](#3-connect-to-claude-code)
+4. [Connect to Codex](#4-connect-to-codex)
+5. [Using a Local Folder as Source](#5-using-a-local-folder-as-source)
+6. [Local HuggingFace Model (No API Key)](#6-local-huggingface-model-no-api-key)
+7. [Full Configuration Reference](#7-full-configuration-reference)
+8. [Resetting the Database](#8-resetting-the-database)
+9. [Available MCP Tools](#9-available-mcp-tools)
+10. [Architecture](#10-architecture)
 
 ---
 
-## 1. Connect to Claude Desktop — Manual Config
+## 1. Generated Project: One-Command Claude Desktop Setup
 
-The install scripts (`install_claude_plugin.ps1` / `.sh`) handle this automatically. Only use this section if you need to configure manually.
+When MCP Forge generates an MCP server for your project, it includes two setup scripts that automatically wire the generated server into Claude Desktop — no manual JSON editing required.
+
+### What's stable, what's under testing
+
+| Source type | Status |
+|---|---|
+| Local folder (`mnt/`) | ✅ Stable — recommended |
+| OpenAPI / Swagger URL | 🧪 Under testing |
+| GitHub repo | 🧪 Under testing |
+| File upload | 🧪 Under testing |
+| Live URL probing | 🧪 Under testing |
+| Manual description | 🧪 Under testing |
+
+| Output language | Status |
+|---|---|
+| Python FastMCP (`python_fastmcp`) | ✅ Stable — recommended |
+| Node.js | 🚧 Under development & testing |
+| Go | 🚧 Under development & testing |
+
+### Files included in every generated project
+
+> **Two plugins, not one.** After full setup you will see two separate entries in Claude Desktop → Settings → Developer:
+> - **`mcp-forge`** — the workshop. Lets Claude create projects, generate code, run tests. Installed via `forge plugin install`.
+> - **`your-project-name`** — the product. Lets Claude call your actual API directly. Installed via `bash configure_claude.sh`.
+>
+> They are independent. The generated plugin talks directly to your running app — it does **not** go through MCP Forge. Your original app must be running at `BASE_URL` for tool calls to return real data.
+
+```
+generated/<project-name>/
+├── main.py                 ← the generated MCP server
+├── requirements.txt        ← fastmcp, httpx, mcp
+├── .env                    ← BASE_URL and API_TOKEN (pre-filled from your source)
+├── configure_claude.sh     ← macOS / Linux one-command setup  (chmod 755)
+├── configure_claude.ps1    ← Windows PowerShell equivalent
+└── README.md               ← Quick Setup at the top
+```
+
+### Run the setup script
+
+**macOS / Linux**
+```bash
+cd generated/<project-name>
+bash configure_claude.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+cd generated\<project-name>
+.\configure_claude.ps1
+```
+
+### What the script does
+
+1. **Detects your OS** — finds the correct `claude_desktop_config.json` path automatically
+2. **Creates `.venv/`** — isolated Python virtual environment inside the project folder
+3. **Installs dependencies** — runs `pip install -r requirements.txt` into the venv
+4. **Reads `.env`** — picks up `BASE_URL` (or prompts you if it’s not set)
+5. **Merges `mcpServers`** — adds your project entry without touching existing entries
+6. **Prints restart instructions**
+
+Then **fully quit and reopen Claude Desktop** (system tray → Quit — not just close the window). Your converted API appears as a new tool with a 🟢 green dot under **Settings → Developer**.
+
+### Options
+
+| Flag | Description |
+|---|---|
+| `--base-url <url>` | Override the target API base URL (e.g. `http://localhost:9000`) |
+
+```bash
+# Example: your API runs on port 9000
+bash configure_claude.sh --base-url http://localhost:9000
+```
+
+### The `.env` file
+
+Before running the script you can edit `.env` in the generated folder:
+
+```env
+BASE_URL=http://localhost:8000   # URL of the API being wrapped
+API_TOKEN=                        # Bearer token if the API requires auth
+```
+
+`BASE_URL` is automatically pre-filled from the URL you provided when creating the project.
+
+### What gets written to `claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "<project_name>": {
+      "command": "/path/to/generated/<project-name>/.venv/bin/python",
+      "args": ["/path/to/generated/<project-name>/main.py"],
+      "env": {
+        "BASE_URL": "http://localhost:8000",
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}
+```
+
+Existing entries (e.g. `mcp-forge` itself) are preserved — the script merges, not overwrites.
+
+### Changing the base URL later
+
+Edit `BASE_URL` in `.env` and re-run the script, or edit `claude_desktop_config.json` directly and restart Claude Desktop.
+
+---
+
+## 2. Connect MCP Forge itself to Claude Desktop (Manual Config)
+
+> This section covers connecting **MCP Forge** (the forging tool itself) to Claude Desktop — not the generated servers. The install scripts (`install_claude_plugin.ps1` / `.sh`) or `forge plugin install` handle this automatically. Only use this section if you need to configure manually.
 
 ### Get your auth token
 
@@ -94,7 +206,7 @@ Edit `MCP_AUTH_TOKEN=` in `.env` → `docker compose restart` → re-run install
 
 ---
 
-## 2. Connect to Claude Code
+## 3. Connect to Claude Code
 
 ### Option A — Marketplace (recommended, no cloning needed)
 
@@ -134,7 +246,7 @@ export FORGE_TOKEN=your-token-here
 
 ---
 
-## 3. Connect to Codex
+## 4. Connect to Codex
 
 ```bash
 # Install the forge CLI
@@ -157,7 +269,9 @@ $forge chat 1 "message"  # chat with AI agent
 
 ---
 
-## 4. Using a Local Folder as Source
+## 5. Using a Local Folder as Source
+
+> **This is the most reliable and recommended source type.** Other source types (OpenAPI URL, GitHub repo, file upload, URL probing) are under testing.
 
 The `mnt/` folder next to `docker-compose.yml` is live-mounted into the container at `/mnt/`. Drop any project folder there — no Docker restart needed.
 
@@ -165,19 +279,65 @@ The `mnt/` folder next to `docker-compose.yml` is live-mounted into the containe
 mcp-forge/
 └── mnt/
     └── my-api/          ← copy your project folder here
-        ├── src/
-        └── package.json
+        ├── main.py          (or app.py, server.py, etc.)
+        └── requirements.txt
 ```
 
-- In the **dashboard**: Source type = `Local Folder`, Path = `/mnt/my-api`
-- In **Claude Desktop**: *"Create a project, source type local_folder, path /mnt/my-api"*
-- With the **CLI**: `forge analyze 1` after creating the project with `source_url=/mnt/my-api`
+### Full workflow
+
+**Step 1 — Copy your project into `mnt/`**
+```bash
+cp -r /path/to/my-api  mnt/my-api
+```
+
+**Step 2 — Create the project (pick one method)**
+
+*Dashboard:*
+- Open **http://localhost:8000** → **+ New Project**
+- Source type = `Local Folder`
+- Path = `/mnt/my-api`
+
+*Claude Desktop:*
+```
+Create a new MCP Forge project called "my-api",
+source type local_folder, path /mnt/my-api
+```
+
+*CLI:*
+```bash
+# Create via dashboard first, then trigger analysis
+forge analyze 1
+```
+
+**Step 3 — Generate**
+
+*Dashboard:* click **Generate** on the project page.
+
+*Claude Desktop:*
+```
+Generate the MCP server for project 1 in Python FastMCP
+```
+
+*CLI:*
+```bash
+forge generate 1 --lang python_fastmcp
+```
+
+> **Language note:** Only **Python FastMCP** (`python_fastmcp`) is stable. Node.js, Go, and other targets are under development and testing.
+
+**Step 4 — Run the setup script**
+```bash
+cd generated/my-api
+bash configure_claude.sh
+```
+
+Then fully quit and reopen Claude Desktop.
 
 > `mnt/` contents are gitignored — your code won't be committed.
 
 ---
 
-## 5. Local HuggingFace Model (No API Key)
+## 6. Local HuggingFace Model (No API Key)
 
 Requires NVIDIA GPU + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
 
@@ -206,7 +366,7 @@ The model downloads on first use and is cached. Swap `LOCAL_MODEL` for any Huggi
 
 ---
 
-## 6. Full Configuration Reference
+## 7. Full Configuration Reference
 
 All settings live in `.env` — also editable live from the dashboard **Config** page.
 
@@ -235,7 +395,7 @@ All settings live in `.env` — also editable live from the dashboard **Config**
 
 ---
 
-## 7. Resetting the Database
+## 8. Resetting the Database
 
 ```bash
 # Clear all rows (schema preserved)
@@ -247,7 +407,7 @@ docker compose down -v && docker compose up -d
 
 ---
 
-## 8. Available MCP Tools
+## 9. Available MCP Tools
 
 These are the tools exposed to Claude Desktop / Claude Code / Codex:
 
@@ -271,7 +431,7 @@ These are the tools exposed to Claude Desktop / Claude Code / Codex:
 
 ---
 
-## 9. Architecture
+## 10. Architecture
 
 ```
 Claude Desktop / Claude Code / Codex

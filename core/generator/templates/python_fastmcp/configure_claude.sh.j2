@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# ── {{ project_name }} — One-command Claude Desktop setup ─────────────────────
+# Usage:
+#   bash configure_claude.sh                        # reads BASE_URL from .env
+#   bash configure_claude.sh --base-url http://...  # explicit override
+#
+# What this does:
+#   1. Creates a Python virtual environment (.venv)
+#   2. Installs dependencies from requirements.txt
+#   3. Writes an mcpServers entry into Claude Desktop's config file
+#   4. Tells you to restart Claude Desktop
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_NAME="{{ project_slug }}"
+ENTRYPOINT=""
+
+# ── Parse args ────────────────────────────────────────────────────────────────
+BASE_URL=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --base-url|-b) BASE_URL="$2"; shift 2 ;;
+        *)             shift ;;
+    esac
+done
+
+# ── Load BASE_URL from .env if not given on command line ──────────────────────
+if [[ -z "$BASE_URL" ]] && [[ -f "$SCRIPT_DIR/.env" ]]; then
+    BASE_URL=$(grep -m1 '^BASE_URL=' "$SCRIPT_DIR/.env" | cut -d= -f2 | tr -d '[:space:]')
+fi
+
+# ── Interactive prompt if still empty ─────────────────────────────────────────
+if [[ -z "$BASE_URL" ]]; then
+    read -rp "Enter the base URL of your running API [http://localhost:8000]: " BASE_URL
+    BASE_URL="${BASE_URL:-http://localhost:8000}"
+fi
+
+echo ""
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║  Setting up {{ project_name }} MCP server for Claude Desktop  ║"
+echo "╚══════════════════════════════════════════════════════╝"
+echo ""
+echo "  Project : $PROJECT_NAME"
+echo "  Base URL: $BASE_URL"
+echo ""
+
+# ── Step 1: Create virtual environment ───────────────────────────────────────
+if [[ ! -d "$SCRIPT_DIR/.venv" ]]; then
+    echo "▶ Creating virtual environment..."
+    python3 -m venv "$SCRIPT_DIR/.venv"
+else
+    echo "✓ Virtual environment already exists"
+fi
+
+# ── Step 2: Install dependencies ─────────────────────────────────────────────
+echo "▶ Installing dependencies..."
+"$SCRIPT_DIR/.venv/bin/pip" install --quiet --upgrade pip
+"$SCRIPT_DIR/.venv/bin/pip" install --quiet -r "$SCRIPT_DIR/requirements.txt"
+echo "✓ Dependencies installed"
+
+# ── Step 3: Find entrypoint ──────────────────────────────────────────────────
+for candidate in main.py server.py app.py; do
+    if [[ -f "$SCRIPT_DIR/$candidate" ]]; then
+        ENTRYPOINT="$SCRIPT_DIR/$candidate"
+        break
+    fi
+done
+if [[ -z "$ENTRYPOINT" ]]; then
+    echo "ERROR: Could not find main.py / server.py / app.py in $SCRIPT_DIR"
+    exit 1
+fi
+
+PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python"
+
+# ── Step 4: Detect Claude Desktop config path ────────────────────────────────
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Claude"
+else
+    CLAUDE_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
+fi
+CLAUDE_CONFIG="$CLAUDE_CONFIG_DIR/claude_desktop_config.json"
+mkdir -p "$CLAUDE_CONFIG_DIR"
+
+# ── Step 5: Merge mcpServers entry using Python (reliable JSON handling) ──────
+echo "▶ Writing Claude Desktop config..."
+"$PYTHON_BIN" - <<PYEOF
+import json, sys
+
+config_path = "$CLAUDE_CONFIG"
+entry = {
+    "command": "$PYTHON_BIN",
+    "args": ["$ENTRYPOINT"],
+    "env": {
+        "BASE_URL": "$BASE_URL",
+        "MCP_TRANSPORT": "stdio"
+    }
+}
+
+try:
+    with open(config_path) as f:
+        config = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    config = {}
+
+config.setdefault("mcpServers", {})
+config["mcpServers"]["$PROJECT_NAME"] = entry
+
+with open(config_path, "w") as f:
+    json.dump(config, f, indent=2)
+
+print("  Written '$PROJECT_NAME' entry to " + config_path)
+PYEOF
+
+# ── Done ──────────────────────────────────────────────────────────────────────
+echo ""
+echo "✅  {{ project_name }} is registered in Claude Desktop."
+echo ""
+echo "  ⚠  Make sure your API is running at: $BASE_URL"
+echo "  🔄  Fully quit Claude Desktop (⌘Q on Mac, or right-click dock → Quit)"
+echo "      then reopen it."
+echo "  🟢  Go to Settings → Developer — you should see '$PROJECT_NAME' with a green dot."
+echo ""

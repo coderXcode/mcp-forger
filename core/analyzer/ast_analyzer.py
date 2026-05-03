@@ -78,8 +78,23 @@ class ASTAnalyzer:
             return self._empty_result()
 
         code_block = self._format_code_block()
-        response_text = await self._call_llm(code_block)
-        return self._parse_response(response_text)
+        try:
+            response_text = await self._call_llm(code_block)
+            data = self._parse_response(response_text)
+        except Exception:
+            data = self._empty_result()
+
+        # Deterministic fallback: if LLM returned no endpoints, extract FastAPI routes via AST
+        if not data.get("endpoints"):
+            static_eps = self._static_fastapi_extract()
+            if static_eps:
+                data["endpoints"] = static_eps
+                if data.get("language", "unknown") in ("unknown", ""):
+                    data["language"] = "python"
+                if data.get("framework", "unknown") in ("unknown", ""):
+                    data["framework"] = "fastapi"
+
+        return data
 
     # ── LLM call ─────────────────────────────────────────────────────────────
 
@@ -176,6 +191,137 @@ class ASTAnalyzer:
             return data
         except json.JSONDecodeError:
             return {**self._empty_result(), "raw_response": text}
+
+    def _static_fastapi_extract(self) -> list[dict]:
+        """
+        Deterministic FastAPI/Flask route extractor using Python's ast module.
+        Used as a fallback when the LLM returns no endpoints.
+        Returns endpoint dicts in the template-ready format (operation_id, path_params, etc.).
+        """
+        import ast as _ast
+        import re
+
+        HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+        METHOD_TO_MCP = {
+            "get": "resource", "head": "resource", "options": "resource",
+            "post": "tool", "put": "tool", "patch": "tool", "delete": "tool",
+        }
+        SKIP_NAMES = {"self", "request", "response", "background", "session",
+                      "current_user", "db", "user"}
+        SKIP_ANNOTATIONS = {"Depends", "BackgroundTasks", "AsyncSession", "Session",
+                            "Request", "Response", "HTTPAuthorizationCredentials"}
+
+        endpoints: list[dict] = []
+
+        for fname, content in self._files.items():
+            if not fname.endswith(".py"):
+                continue
+            try:
+                tree = _ast.parse(content, filename=fname)
+            except SyntaxError:
+                continue
+
+            for node in _ast.walk(tree):
+                if not isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                    continue
+                for decorator in node.decorator_list:
+                    path, method = self._extract_fastapi_route(decorator)
+                    if path is None:
+                        continue
+
+                    # Path params from {param} in URL
+                    path_param_names = set(re.findall(r"\{(\w+)\}", path))
+                    path_params = [
+                        {"name": p, "type": "string", "required": True, "in": "path"}
+                        for p in re.findall(r"\{(\w+)\}", path)
+                    ]
+
+                    # Docstring
+                    docstring = ""
+                    if (
+                        node.body
+                        and isinstance(node.body[0], _ast.Expr)
+                        and isinstance(node.body[0].value, _ast.Constant)
+                        and isinstance(node.body[0].value.value, str)
+                    ):
+                        docstring = node.body[0].value.value.strip().split("\n")[0]
+
+                    # Query params and body detection from function args
+                    query_params: list[dict] = []
+                    has_body = False
+                    for arg in node.args.args:
+                        name = arg.arg
+                        if name in SKIP_NAMES or name in path_param_names:
+                            continue
+                        ann_str = ""
+                        if arg.annotation and hasattr(_ast, "unparse"):
+                            try:
+                                ann_str = _ast.unparse(arg.annotation)
+                            except Exception:
+                                pass
+                        if any(s in ann_str for s in SKIP_ANNOTATIONS):
+                            continue
+                        # Pascal-case annotation = Pydantic model = request body
+                        if ann_str and ann_str[0].isupper() and method in ("post", "put", "patch"):
+                            has_body = True
+                            continue
+                        # Primitives in GET/DELETE → query params
+                        if method in ("get", "delete", "head"):
+                            query_params.append({
+                                "name": name,
+                                "type": ann_str or "string",
+                                "required": False,
+                                "in": "query",
+                            })
+
+                    # If POST/PUT/PATCH has function args beyond path params, assume body
+                    if method in ("post", "put", "patch") and not has_body:
+                        non_path = [
+                            a.arg for a in node.args.args
+                            if a.arg not in SKIP_NAMES and a.arg not in path_param_names
+                        ]
+                        if non_path:
+                            has_body = True
+
+                    endpoints.append({
+                        "operation_id": node.name,
+                        "name": node.name,
+                        "path": path,
+                        "method": method.upper(),
+                        "summary": docstring or f"{method.upper()} {path}",
+                        "description": docstring or f"{method.upper()} {path}",
+                        "path_params": path_params,
+                        "query_params": query_params,
+                        "body_schema": {"type": "object"} if has_body else None,
+                        "mcp_type": METHOD_TO_MCP.get(method, "tool"),
+                        "parameters": path_params + query_params,
+                        "tags": [],
+                        "returns": "JSON response",
+                    })
+
+        return endpoints
+
+    @staticmethod
+    def _extract_fastapi_route(decorator) -> tuple:
+        """Extract (path, method) from a FastAPI route decorator, or (None, None)."""
+        import ast as _ast
+
+        if not isinstance(decorator, _ast.Call):
+            return None, None
+        func = decorator.func
+        if not isinstance(func, _ast.Attribute):
+            return None, None
+        method = func.attr.lower()
+        if method not in {"get", "post", "put", "patch", "delete", "head", "options"}:
+            return None, None
+        # First positional arg = path string
+        if decorator.args and isinstance(decorator.args[0], _ast.Constant) and isinstance(decorator.args[0].value, str):
+            return decorator.args[0].value, method
+        # 'path' keyword arg
+        for kw in decorator.keywords:
+            if kw.arg == "path" and isinstance(kw.value, _ast.Constant):
+                return kw.value.value, method
+        return None, None
 
     @staticmethod
     def _empty_result() -> dict:

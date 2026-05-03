@@ -51,7 +51,7 @@ async def generate_mcp(
     analysis_data = {
         "language": analysis.language,
         "framework": analysis.framework,
-        "base_url": "",
+        "base_url": analysis.base_url,
         "endpoints": analysis.endpoints or [],
         "schemas": analysis.schemas or {},
         "auth_info": analysis.auth_info or {},

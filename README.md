@@ -27,9 +27,9 @@
 
 | Category | Highlights |
 |---|---|
-| **Source ingestion** | OpenAPI/Swagger URL · GitHub repo · Live URL probing · Local folder (`mnt/`) · File upload · Manual description |
+| **Source ingestion** | Local folder (`mnt/`) · OpenAPI/Swagger URL *(under testing)* · GitHub repo *(under testing)* · Live URL probing *(under testing)* · File upload *(under testing)* · Manual description *(under testing)* |
 | **AI agent** | Multi-LLM (Gemini · Anthropic · OpenAI · local HuggingFace) · per-project chat · clarification Q&A loop |
-| **Code generation** | Python FastMCP · Node.js (in testing) · Go (in testing) · Generic (in testing)· LLM polish pass · security audit |
+| **Code generation** | **Python FastMCP** (stable) · Node.js / Go / Generic *(under development & testing)* · LLM polish pass · security audit · auto-generated `.env`, `configure_claude.sh` & `configure_claude.ps1` |
 | **Versioning** | Snapshot on every generation · one-click rollback · optional git commits |
 | **Testing** | AI-generated pytest cases · in-container runner · full test history |
 | **Dashboard** | Real-time logs · 6-tab project view · editable `.env` config from the browser |
@@ -167,13 +167,16 @@ forge status
 ### Create and convert your first project
 
 ```bash
-# From an OpenAPI/Swagger spec URL
-forge analyze 1   # after creating via dashboard or --source-url flag
+# Recommended: from a local folder
+# 1. Copy your project into mnt/  (e.g. mnt/my-api/)
+# 2. Create the project on the dashboard or via Claude Desktop
+# 3. Trigger analysis
+forge analyze 1
 
 # Check what's happening
 forge logs 1 --tail 20
 
-# Generate the MCP server
+# Generate the MCP server (Python FastMCP is the stable option)
 forge generate 1 --lang python_fastmcp
 
 # Run AI-generated tests
@@ -235,10 +238,18 @@ Go to **Settings → Developer** — you should see **mcp-forge** with a 🟢 gr
 
 ### Example prompts
 
+**Recommended — local folder (most reliable):**
 ```
-Create a new MCP Forger project called "petstore" from
+Create a new MCP Forge project called "my-api",
+source type local_folder, path /mnt/my-api
+```
+
+**OpenAPI/Swagger URL** *(under testing)*:
+```
+Create a new MCP Forge project called "petstore" from
 https://petstore3.swagger.io/api/v3/openapi.json
 ```
+
 ```
 Generate the MCP server for project 1 in Python FastMCP
 ```
@@ -249,6 +260,8 @@ Run tests for project 1 and show me the results
 Chat with the forge agent for project 1:
 "Add rate limiting to all tools"
 ```
+
+> **Language note:** Only **Python FastMCP** is stable. Node.js, Go, and other language targets are under development and testing.
 
 ---
 
@@ -268,6 +281,53 @@ Skills available:
 /forge:test <project_id>
 /forge:rollback <project_id> <version>
 ```
+
+---
+
+## Step 3 — Connect Your Generated MCP Server to Claude Desktop
+
+### Understanding the two plugins
+
+After this step you will have **two separate plugins** in Claude Desktop — they do different things:
+
+| Plugin | What it does | Installed by |
+|---|---|---|
+| `mcp-forge` | Lets Claude *operate MCP Forge itself* — create projects, generate code, run tests | `forge plugin install` (Step 2C) |
+| `your-project-name` | Lets Claude call *your actual app* directly — the converted product | `bash configure_claude.sh` (this step) |
+
+They are completely independent. You can use either or both. The generated plugin (`your-project-name`) is the end product — it talks directly to your running app, with no dependency on MCP Forge once it's set up.
+
+> **Important:** The generated plugin needs your original app to be running. It doesn't start your app for you — it just gives Claude a way to talk to it. Make sure your app is running at the `BASE_URL` set in `.env` before asking Claude to use it.
+
+### Run the setup script
+
+Open a terminal in the **generated project folder** and run:
+
+**macOS / Linux**
+```bash
+bash configure_claude.sh
+```
+
+**Windows (PowerShell)**
+```powershell
+.\configure_claude.ps1
+```
+
+The script does everything in one step:
+1. Creates a Python virtual environment (`.venv/`)
+2. Installs dependencies from `requirements.txt`
+3. Finds the right `claude_desktop_config.json` for your OS
+4. Safely merges a new `mcpServers` entry — existing entries are preserved
+5. Prints restart instructions
+
+Then **fully quit and reopen Claude Desktop** (system tray → Quit, not just close window). Your converted API appears as a new tool with a 🟢 green dot.
+
+> **Non-standard port?** Pass `--base-url` to override the default:
+> ```bash
+> bash configure_claude.sh --base-url http://localhost:9000
+> ```
+
+> The generated `.env` file also lets you set `BASE_URL` and `API_TOKEN` before running the script.
 
 ---
 

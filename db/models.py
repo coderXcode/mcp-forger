@@ -116,6 +116,7 @@ class AnalysisResult(SQLModel, table=True):
     project_id: int = Field(foreign_key="project.id", index=True)
     language: str = ""
     framework: str = ""
+    base_url: str = ""
     # JSON blobs stored as text
     endpoints: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
     schemas: dict  = Field(default_factory=dict,  sa_column=Column(JSON))

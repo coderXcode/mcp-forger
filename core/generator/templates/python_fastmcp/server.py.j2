@@ -58,11 +58,11 @@ async def {{ tool.operation_id | replace("-", "_") }}(
     """{{ tool.summary or tool.description or tool.operation_id }}
 
     Endpoint: {{ tool.method }} {{ tool.path }}
-    {% if tool.description and tool.summary %}{{ tool.description }}{% endif %}
+    {% if tool.description and tool.description != tool.summary %}{{ tool.description }}{% endif %}
     """
     url = BASE_URL + "{{ tool.path }}"
     {% for p in tool.path_params %}
-    url = url.replace("{{"{"}}{{ p.name }}{{"}"}}","{{ p.name }}")
+    url = url.replace("{{"{"}}{{ p.name }}{{"}"}}" , {{ p.name }})
     {% endfor %}
 
     async with httpx.AsyncClient(headers=_get_headers(), timeout=30) as client:
@@ -84,7 +84,7 @@ async def {{ tool.operation_id | replace("-", "_") }}(
 
 {% for resource in resources %}
 # ─────────────────────────────────────────────────────────────────────────────
-@mcp.resource("{{ resource.path | replace("{", "{") }}")
+@mcp.tool()
 async def {{ resource.operation_id | replace("-", "_") }}(
     {% for p in resource.path_params %}{{ p.name }}: str,
     {% endfor %}
@@ -94,10 +94,11 @@ async def {{ resource.operation_id | replace("-", "_") }}(
     """{{ resource.summary or resource.description or resource.operation_id }}
 
     Endpoint: {{ resource.method }} {{ resource.path }}
+    {% if resource.description and resource.description != resource.summary %}{{ resource.description }}{% endif %}
     """
     url = BASE_URL + "{{ resource.path }}"
     {% for p in resource.path_params %}
-    url = url.replace("{{"{"}}{{ p.name }}{{"}"}}","{{ p.name }}")
+    url = url.replace("{{"{"}}{{ p.name }}{{"}"}}", {{ p.name }})
     {% endfor %}
 
     async with httpx.AsyncClient(headers=_get_headers(), timeout=30) as client:

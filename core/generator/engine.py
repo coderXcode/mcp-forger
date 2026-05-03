@@ -108,6 +108,8 @@ class GeneratorEngine:
     def _build_context(self) -> dict:
         """Build Jinja2 template context from analysis data."""
         endpoints = self._analysis.get("endpoints", [])
+        # Normalize all endpoints to template-expected field names
+        endpoints = [self._normalize_endpoint(e) for e in endpoints]
         tools      = [e for e in endpoints if e.get("mcp_type") in ("tool", None)]
         resources  = [e for e in endpoints if e.get("mcp_type") == "resource"]
         prompts    = [e for e in endpoints if e.get("mcp_type") == "prompt"]
@@ -127,6 +129,51 @@ class GeneratorEngine:
             "prompts": prompts,
             "notes": self._analysis.get("notes", ""),
             "clarifications": self._clarifications,
+        }
+
+    @staticmethod
+    def _normalize_endpoint(ep: dict) -> dict:
+        """
+        Ensure every endpoint has the template-expected fields:
+        operation_id, summary, path_params, query_params, body_schema.
+        Handles both OpenAPI-analyzer output (already correct) and
+        LLM-analyzer output which uses 'name' + flat 'parameters' list.
+        """
+        # OpenAPI analyzer / static extractor already produce these fields — fast path
+        if ep.get("operation_id") and ep.get("path_params") is not None:
+            return ep
+
+        path = ep.get("path", ep.get("name", "/"))
+        method = ep.get("method", "GET").upper()
+        path_param_names = set(re.findall(r"\{(\w+)\}", path))
+        all_params = ep.get("parameters", [])
+
+        path_params = [p for p in all_params if p.get("name") in path_param_names]
+        remaining   = [p for p in all_params if p.get("name") not in path_param_names]
+
+        query_params: list[dict] = []
+        has_body = False
+        for p in remaining:
+            ptype = p.get("type", "").lower()
+            pname = p.get("name", "")
+            if method in ("POST", "PUT", "PATCH"):
+                if ptype in ("object", "dict") or pname.lower() in ("body", "payload", "data"):
+                    has_body = True
+                # else: skip body fields from query params
+            else:
+                query_params.append(p)
+
+        # If POST/PUT/PATCH has non-path params but none recognised as body, assume body
+        if method in ("POST", "PUT", "PATCH") and remaining and not has_body:
+            has_body = True
+
+        return {
+            **ep,
+            "operation_id": ep.get("operation_id") or ep.get("name", "unnamed"),
+            "summary": ep.get("summary") or ep.get("description", ""),
+            "path_params": path_params,
+            "query_params": query_params,
+            "body_schema": ep.get("body_schema") if "body_schema" in ep else ({"type": "object"} if has_body else None),
         }
 
     def _get_template_dir(self) -> str:
@@ -177,10 +224,21 @@ CODE:
 """
         try:
             improved = await self._call_llm(prompt)
-            # Strip markdown fences and think blocks
+            # 1. Strip thinking blocks (Gemini 2.5 "<think>" wrapper)
             improved = re.sub(r"<think>.*?</think>", "", improved, flags=re.DOTALL).strip()
-            improved = re.sub(r"^```\w*\n", "", improved).rstrip("`").strip()
-            files[main_file] = improved
+            # 2. Extract from code fence - handles responses wrapped in docstrings or extra text
+            fence_match = re.search(r"```(?:python)?\n(.*?)```", improved, re.DOTALL)
+            if fence_match:
+                improved = fence_match.group(1).strip()
+            else:
+                # Strip any leading / trailing fence that wasn't paired
+                improved = re.sub(r"^```\w*\n?", "", improved.strip())
+                improved = re.sub(r"\n?```$", "", improved.strip()).strip()
+            # 3. Validate — if LLM dropped all MCP decorators, keep the template output
+            from core.generator.validator import MCPValidator
+            if MCPValidator().validate_python(improved).valid:
+                files[main_file] = improved
+            # else: improved is broken — silently keep original template output
         except Exception:
             pass  # Keep original if polish fails
 

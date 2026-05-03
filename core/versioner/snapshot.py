@@ -150,6 +150,8 @@ class SnapshotManager:
             file_path = out_dir / fname
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(content, encoding="utf-8")
+            if fname.endswith(".sh"):
+                file_path.chmod(0o755)
 
     async def _git_commit(self, project_slug: str, snapshot: ProjectSnapshot) -> None:
         try:
